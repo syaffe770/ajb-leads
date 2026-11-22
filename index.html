@@ -173,6 +173,7 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
     <div class="filters">
       <select id="fAgent" aria-label="Agent"><option value="">All agents</option></select>
       <select id="fStage" aria-label="Stage"><option value="">All stages</option></select>
+      <select id="fSrc" aria-label="Source"><option value="">All sources</option><option>Calendar</option><option>Call list</option><option>WhatsApp</option><option>Quo</option><option>Applications</option></select>
       <span class="muted" id="count"></span>
     </div>
 
@@ -223,11 +224,13 @@ var TABS = [
   { k: "focus", label: "In focus", cls: "green", test: function (l) { return l.focus } },
   { k: "apps", label: "Applications", cls: "", test: function (l) { return l.focus && ["App sent", "Applied", "Approved"].indexOf(l.stage) >= 0 } },
   { k: "dead", label: "Dead (last 30 days)", cls: "", test: function (l) { return !l.focus } },
+  { k: "all", label: "Everyone", cls: "", test: function () { return true },
+    sort: function (a, b) { return (a.lastEvent || "") < (b.lastEvent || "") ? 1 : (a.lastEvent || "") > (b.lastEvent || "") ? -1 : 0 } },
   { k: "quo", label: "Quo, last 45 days", cls: "", test: function (l, d) { return !!l.lastIn && l.lastIn.slice(0, 10) >= dayAdd(d.today, -45) },
     sort: function (a, b) { return a.lastIn < b.lastIn ? 1 : a.lastIn > b.lastIn ? -1 : 0 } }
 ];
 var S = { token: "", data: null, tab: "now", sel: "", q: "", agent: "", stage: "", full: {} };
-var store = { get: function (k) { try { return localStorage.getItem(k) } catch (e) { return null } }, set: function (k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (e) {} } };
+var store = { get: function (k) { try { return localStorage.getItem(k) } catch (e) { return null } }, set: function (k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (e) { try { localStorage.removeItem(k) } catch (x) {} } } }; // too big: drop the old copy
 
 function $(id) { return document.getElementById(id) }
 function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
@@ -282,13 +285,14 @@ function load() {
   var cached = store.get("ajb.snap");
   if (cached && !S.data) { try { showBoard(cached); $("built").textContent += " · refreshing…" } catch (e) {} }
   else $("built").textContent = "Loading…";
-  call("sbBoardData", [S.token], function (json) { showBoard(json); store.set("ajb.snap", json) },
+  call("sbBoardData", [S.token], function (json) { showBoard(json); try { store.set("ajb.snap", json) } catch (e) { store.set("ajb.snap", null) } },
     function (x) { if (String(x && x.message || x).indexOf("owner-only") >= 0) { S.role = "agent"; store.set("ajb.role", "agent"); loadAgent() } else alert(String(x && x.message || x)) });
 }
 $("refresh").onclick = load;
 $("q").oninput = function () { S.q = this.value.trim().toLowerCase(); renderList() };
 $("fAgent").onchange = function () { S.agent = this.value; render() };
 $("fStage").onchange = function () { S.stage = this.value; render() };
+$("fSrc").onchange = function () { S.src = this.value; render() };
 
 function fillFilters() {
   var agents = {}; S.data.leads.forEach(function (l) { l.shows.forEach(function (s) { if (s.agent) agents[s.agent] = 1 }) });
@@ -305,6 +309,7 @@ function pool() {
   return S.data.leads.filter(function (l) {
     if (S.agent && !l.shows.some(function (s) { return s.agent === S.agent })) return false;
     if (S.stage && l.stage !== S.stage) return false;
+    if (S.src && (l.src || []).indexOf(S.src) < 0) return false;
     if (S.q && hay(l).indexOf(S.q) < 0 && String(l.phone).replace(/\D/g, "").indexOf(S.q.replace(/\D/g, "") || "~") < 0) return false;
     return true;
   });
@@ -358,6 +363,7 @@ function renderList() {
     var top = el("div", "top"); top.append(el("span", "nm", l.name || pretty(l.phone)));
     var st = el("span", "chip stage", l.stage); st.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--s-lost") + ")"); top.append(st);
     c.append(top, el("div", "sub", [l.name ? pretty(l.phone) : "", l.town, l.income && "income " + l.income, l.credit && "credit " + l.credit].filter(Boolean).join(" · ")));
+    if (l.src && l.src.length) c.append(el("div", "why", "From: " + l.src.join(", ")));
     var chips = el("div", "chips");
     String(l.units || "").split(";").slice(0, 2).forEach(function (u) { if (u.trim()) chips.append(el("span", "chip unit", u.trim())) });
     if (l.result) chips.append(el("span", "chip " + (l.result === "Interested in applying" ? "blue" : l.result === "Not interested" ? "" : "amber"), l.result + (l.resultDate ? " · " + md(l.resultDate) : "")));
