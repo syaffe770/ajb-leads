@@ -104,6 +104,7 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 .msg.out { align-self: flex-end; background: var(--accent-soft); border-bottom-left-radius: 12px; border-bottom-right-radius: 3px }
 .msg.call { align-self: center; background: var(--amber-soft); color: var(--amber); font-size: 12.5px }
 .back { display: none }
+.chip.done { background: var(--accent-soft); color: var(--accent); cursor: pointer }
 .card .last { font-size: 13px; color: var(--fg); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
 .card .last b { color: var(--muted); font-weight: 600 }
 .dhead { display: grid; gap: 6px }
@@ -227,7 +228,7 @@ details.more h3 { margin-top: 12px }
 var STAGES = ["Interested", "App sent", "Applied", "Approved", "Signed", "Denied", "No longer interested", "Lost"]; // same as SB_STAGES in Rules.js
 var STAGE_VAR = { "Interested": "--s-interested", "App sent": "--s-appsent", "Applied": "--s-applied", "Approved": "--s-approved", "Signed": "--s-signed",
   "Denied": "--s-lost", "No longer interested": "--s-lost", "Lost": "--s-lost" };
-var S = { token: "", data: null, tab: "reply", sel: "", q: "", agent: "", stage: "", full: {} };
+var S = { token: "", data: null, tab: "next", sel: "", q: "", agent: "", stage: "", full: {} };
 var store = { get: function (k) { try { return localStorage.getItem(k) } catch (e) { return null } }, set: function (k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (e) { try { localStorage.removeItem(k) } catch (x) {} } } }; // too big: drop the old copy
 
 function $(id) { return document.getElementById(id) }
@@ -364,17 +365,33 @@ function bucket(l, d) {
   return "other";
 }
 var by = function (f, desc) { return function (a, b) { var x = f(a) || "", y = f(b) || ""; return x === y ? 0 : (x < y) !== !!desc ? -1 : 1 } };
+// Text next: everyone who needs a text from us now, most urgent first (handover rules), each with one line saying why.
+// "✓ Texted" hides a person on this device until they write again (or until tomorrow for a follow-up); Quo's sync confirms within 15 minutes.
+S.texted = (function () { try { return JSON.parse(store.get("ajb.texted") || "{}") } catch (e) { return {} } })();
+function nowStamp() { var d = new Date(), p = function (n) { return ("0" + n).slice(-2) }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) }
+function markTexted(phone) { S.texted[phone] = nowStamp(); var keep = {}, cut = dayAdd(S.data.today, -14); Object.keys(S.texted).forEach(function (k) { if (S.texted[k] >= cut) keep[k] = S.texted[k] }); S.texted = keep; store.set("ajb.texted", JSON.stringify(keep)); render() }
+function textNext(l, d) {
+  if (l.dnt || OUT_STAGES.indexOf(l.manual.stage) >= 0 || l.manual.focus === "drop") return null;
+  var t = l.texts || {}, texted = S.texted[l.phone] || "";
+  if (t.waiting === "you" && t.lastIn && t.lastIn.slice(0, 10) >= dayAdd(d.today, -14) && !(texted && texted >= t.lastIn)) {
+    if (/found a place/.test(l.why)) return { rank: 0, why: "Says they found a place: one last pitch", at: t.lastIn };
+    return { rank: l.stage === "Approved" ? 1 : 2, why: "They texted " + when(t.lastIn), at: t.lastIn };
+  }
+  if (!l.focus || l.manual.done || !l.due || l.due > d.today || (texted && texted.slice(0, 10) >= d.today)) return null;
+  if (l.stage === "Approved") return { rank: 1, why: "Approved: text now, push to deposit", at: l.due };
+  if (l.result === "Interested in applying" && l.stage === "Interested") return { rank: 3, why: "Wants to apply: send the app link", at: l.due };
+  if (l.zillow && /Zillow/.test(l.why) && !(t.lastOut && t.lastOut.slice(0, 10) >= l.due)) return { rank: 4, why: "Zillow: " + (l.zillow.split(" · ")[1] || "inquiry") + ", not answered", at: l.due };
+  return { rank: l.overdue ? 5 : 6, why: l.overdue ? "Follow-up overdue since " + md(l.due) : "Follow up today", at: l.due };
+}
 var TABS = [
-  { k: "reply", label: "Reply now", cls: "red", test: function (l, d) { return bucket(l, d) === "reply" }, sort: by(function (l) { return l.texts.lastIn }) },
-  { k: "today", label: "Follow up today", cls: "amber", test: function (l, d) { return bucket(l, d) === "today" }, sort: by(function (l) { return (l.overdue ? "0" : "1") + l.due }) },
-  { k: "showing", label: "Showing booked", cls: "blue", test: function (l, d) { return bucket(l, d) === "showing" }, sort: by(function (l) { return l.nextShowing }) },
-  { k: "applying", label: "Applying", cls: "green", test: function (l, d) { return bucket(l, d) === "applying" }, sort: by(function (l) { return l.lastEvent }, true) },
-  { k: "waiting", label: "Waiting on them", cls: "", test: function (l, d) { return bucket(l, d) === "waiting" }, sort: by(function (l) { return l.texts.lastOut }) },
-  { k: "other", label: "Other in focus", cls: "", test: function (l, d) { return bucket(l, d) === "other" }, sort: by(function (l) { return l.lastEvent }, true) },
-  { k: "quo", label: "Quo, last 45 days", cls: "", test: function (l, d) { return !!l.lastIn && l.lastIn.slice(0, 10) >= dayAdd(d.today, -45) }, sort: by(function (l) { return l.lastIn }, true) },
-  { k: "all", label: "Everyone", cls: "", test: function () { return true }, sort: by(function (l) { return l.lastEvent }, true) },
-  { k: "out", label: "Not active", cls: "", test: function (l, d) { return bucket(l, d) === "out" }, sort: by(function (l) { return l.lastEvent }, true) }
+  { k: "next", label: "Text next", cls: "red", test: function (l, d) { return !!textNext(l, d) },
+    sort: function (a, b) { var x = textNext(a, S.data), y = textNext(b, S.data); return x.rank - y.rank || (x.at < y.at ? -1 : x.at > y.at ? 1 : 0) } },
+  { k: "waiting", label: "Waiting on them", cls: "", test: function (l, d) { return l.focus && l.texts && l.texts.waiting === "them" && !textNext(l, d) },
+    sort: function (a, b) { return a.texts.lastOut < b.texts.lastOut ? -1 : 1 } },
+  { k: "all", label: "Everyone", cls: "", test: function () { return true }, sort: function (a, b) { return (a.lastEvent || "") < (b.lastEvent || "") ? 1 : -1 } },
+  { k: "out", label: "Not active", cls: "", test: function (l) { return !l.focus }, sort: function (a, b) { return (a.lastEvent || "") < (b.lastEvent || "") ? 1 : -1 } }
 ];
+function dntLabel(x) { return x === "opted out" ? "Opted out: don't text" : x === "texted STOP" ? "Texted STOP: don't text (add to OptOut tab)" : "Number doesn't work" }
 function when(at) { at = String(at || ""); if (!at) return ""; return (at.slice(0, 10) === S.data.today ? "today" : md(at.slice(0, 10))) + (at.length > 10 ? " " + t12(at.slice(11)) : "") }
 // The newest message we know about: the conversation if loaded, else their last text.
 function lastMsg(l) {
@@ -407,10 +424,11 @@ function renderList() {
     c.append(top, el("div", "sub", [l.name ? pretty(l.phone) : "", String(l.units || "").split(";")[0]].filter(Boolean).join(" · ")));
     var m = lastMsg(l);
     if (m) { var lm = el("div", "last"); lm.append(el("b", null, m.who + ": "), document.createTextNode(String(m.x).replace(/\s+/g, " ").slice(0, 110)), el("span", "muted", "  " + when(m.at))); c.append(lm) }
-    var a = actionChip(l, bucket(l, S.data)), chips = el("div", "chips");
+    var nx = textNext(l, S.data), a = nx ? ["red", nx.why] : actionChip(l, bucket(l, S.data)), chips = el("div", "chips");
     if (a) chips.append(el("span", "chip " + a[0], a[1]));
+    if (nx) { var tb = el("span", "chip done", "✓ Texted"); tb.setAttribute("role", "button"); tb.title = "Hide until they write back"; tb.onclick = function (e) { e.stopPropagation(); markTexted(l.phone) }; chips.append(tb) }
     if (l.zillow && /requested/i.test(l.zillow)) chips.append(el("span", "chip blue", l.zillow.split(" · ").slice(0, 2).join(" · ")));
-    if (l.dnt) chips.append(el("span", "chip red", l.dnt === "opted out" ? "Opted out: don't text" : "Number doesn't work"));
+    if (l.dnt) chips.append(el("span", "chip red", dntLabel(l.dnt)));
     if (chips.childNodes.length) c.append(chips);
     c.onclick = function () { openLead(l.phone) };
     list.append(c);
@@ -429,7 +447,9 @@ function renderDetail() {
   var quo = el("a", null, "Open in Quo"); quo.href = "openphone://dial?number=" + encodeURIComponent(l.phone);
   ph.append(tel, quo);
   var st = el("span", "chip stage", l.stage); st.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--s-lost") + ")"); ph.append(st);
-  if (l.dnt) ph.append(el("span", "chip red", l.dnt === "opted out" ? "Opted out: don't text" : "Number doesn't work"));
+  if (l.dnt) ph.append(el("span", "chip red", dntLabel(l.dnt)));
+  var nxd = textNext(l, S.data);
+  if (nxd) { var tbd = el("button", "btn", "✓ Texted"); tbd.type = "button"; tbd.onclick = function () { markTexted(l.phone) }; ph.append(el("span", "chip red", nxd.why), tbd) }
   head.append(ph);
   if (l.profile) head.append(el("div", "summary", l.profile.replace(/\n\(\d+ related team messages used\)$/, "")));
   box.append(back, head);
