@@ -214,8 +214,9 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 </div>
 
 <script>
-var STAGES = ["Interested", "App sent", "Applied", "Approved", "Signed", "Lost"];
-var STAGE_VAR = { "Interested": "--s-interested", "App sent": "--s-appsent", "Applied": "--s-applied", "Approved": "--s-approved", "Signed": "--s-signed", "Lost": "--s-lost" };
+var STAGES = ["Interested", "App sent", "Applied", "Approved", "Signed", "Denied", "No longer interested", "Lost"]; // same as SB_STAGES in Rules.js
+var STAGE_VAR = { "Interested": "--s-interested", "App sent": "--s-appsent", "Applied": "--s-applied", "Approved": "--s-approved", "Signed": "--s-signed",
+  "Denied": "--s-lost", "No longer interested": "--s-lost", "Lost": "--s-lost" };
 var TABS = [
   { k: "now", label: "Follow up now", cls: "red", test: function (l, d) { return l.focus && !l.manual.done && l.due && l.due <= d.today } },
   { k: "apply", label: "Wants to apply, no app", cls: "blue", test: function (l) { return l.focus && l.result === "Interested in applying" && l.stage === "Interested" } },
@@ -568,6 +569,7 @@ function applyManual(lead, vals) {
   Object.keys(map).forEach(function (c) { if (vals.hasOwnProperty(c)) lead.manual[map[c]] = vals[c] });
   var m = lead.manual;
   if (m.stage) lead.stage = m.stage;
+  if (["Denied", "No longer interested", "Lost"].indexOf(m.stage) >= 0 && !lead.nextShowing) { lead.focus = false; lead.why = m.stage.toLowerCase() + " (set by hand)" }
   if (m.focus === "drop") { lead.focus = false; lead.why = "dropped by hand" } else if (m.focus === "keep") lead.focus = true;
   if (m.next) { lead.due = m.next; lead.overdue = false }
   if (m.done) lead.overdue = false;
