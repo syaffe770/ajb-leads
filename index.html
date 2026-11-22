@@ -1,0 +1,781 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<script>window.SB_API_URL = "https://script.google.com/macros/s/AKfycbyD6oTNPQPTVGbp7xKY-SnIcpMYBVQpDfIdxMi2QKZBHMHD6-ZX4wTOkO_xkfP7gy8Ghw/exec";</script>
+<meta charset="utf-8">
+<title>AJB Leads</title>
+<style>
+/* Layout: sign-in card; then a sticky header, today's showings strip, count tiles, tabs + search,
+   and a two-pane body (lead cards | lead detail). One pane at a time on phones. */
+:root {
+  --bg: #f3f5f8; --surface: #ffffff; --sunk: #eef1f5; --line: #dde2e9; --fg: #18202c; --muted: #5d6878;
+  --accent: #0f6b5c; --accent-soft: #dcefe9;
+  --amber: #8a5300; --amber-soft: #fbedd6; --red: #a3322a; --red-soft: #f9e2df; --blue: #2456b8; --blue-soft: #e2eafb;
+  --s-interested: #2456b8; --s-appsent: #6d28d9; --s-applied: #0e7490; --s-approved: #15803d; --s-signed: #14532d; --s-lost: #6b7280;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #0f141a; --surface: #171e27; --sunk: #121820; --line: #283240; --fg: #e5ebf2; --muted: #9aa6b5;
+  --accent: #5cc7b0; --accent-soft: #163a33;
+  --amber: #f2b45c; --amber-soft: #3a2a10; --red: #f28b80; --red-soft: #3f1c18; --blue: #8fb2ff; --blue-soft: #1b2a4a;
+  --s-interested: #8fb2ff; --s-appsent: #b9a2ff; --s-applied: #5fd0e8; --s-approved: #6fdc8f; --s-signed: #9be7b4; --s-lost: #9aa3ad;
+  --shadow: 0 1px 2px rgba(0,0,0,.4);
+} }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); }
+button, input, select, textarea { font: inherit; color: var(--fg) }
+button { cursor: pointer }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 16px 32px }
+[hidden] { display: none !important }
+
+/* sign-in */
+.signin { max-width: 360px; margin: 12vh auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); display: grid; gap: 12px }
+.signin h1 { margin: 0; font-size: 22px }
+.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted) }
+.field select, .field input, .field textarea { font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; font-weight: 600 }
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent) }
+.btn:disabled { opacity: .6; cursor: default }
+.err { color: var(--red); font-size: 13px }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 14px 0 10px; border-bottom: 1px solid var(--line) }
+header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
+.muted { color: var(--muted); font-size: 12px }
+.grow { flex: 1 }
+#q, #pq { min-width: 0; flex: 1 1 220px; max-width: 360px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+
+/* today's showings */
+.strip-h { margin: 14px 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px }
+.slot { flex: 0 0 auto; min-width: 180px; max-width: 240px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--agent, var(--line)); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; text-align: left; box-shadow: var(--shadow) }
+.slot b { font-size: 15px } .slot .a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.slot.past { opacity: .62 }
+
+/* tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0 }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; text-align: left; display: grid; gap: 2px; box-shadow: var(--shadow) }
+.tile b { font-size: 24px; font-variant-numeric: tabular-nums; line-height: 1.1 }
+.tile span { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted) }
+.tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
+.tile.red b { color: var(--red) } .tile.amber b { color: var(--amber) } .tile.blue b { color: var(--blue) } .tile.green b { color: var(--accent) }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px }
+.filters select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+
+/* body */
+.main { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 14px; align-items: start }
+.list { display: grid; gap: 8px; max-height: calc(100vh - 150px); overflow-y: auto; padding: 2px }
+.card { text-align: left; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--stage, var(--line)); border-radius: 12px; padding: 10px 12px; display: grid; gap: 5px; box-shadow: var(--shadow) }
+.card:hover { border-color: var(--accent) } .card.sel { outline: 2px solid var(--accent) }
+.card .top { display: flex; gap: 8px; align-items: baseline }
+.card .nm { font-size: 16px; font-weight: 650; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.card .sub { color: var(--muted); font-size: 12.5px }
+.card .why { color: var(--muted); font-size: 12px }
+.chips { display: flex; flex-wrap: wrap; gap: 5px }
+.chip { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis }
+.chip.unit { background: var(--accent-soft); color: var(--accent) }
+.chip.amber { background: var(--amber-soft); color: var(--amber) }
+.chip.red { background: var(--red-soft); color: var(--red) }
+.chip.blue { background: var(--blue-soft); color: var(--blue) }
+.chip.stage { color: var(--surface); background: var(--stage) }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--agent, var(--muted)); margin-right: 4px }
+.empty { color: var(--muted); padding: 28px 12px; text-align: center }
+
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: grid; gap: 14px; position: sticky; top: 72px; max-height: calc(100vh - 90px); overflow-y: auto; box-shadow: var(--shadow) }
+.detail h2 { margin: 0; font-size: 21px } .detail h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.phones a { color: var(--accent); font-weight: 600; margin-right: 12px; text-decoration: none }
+.profile { background: var(--blue-soft); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap }
+.profile.none { background: var(--sunk); color: var(--muted) }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; font-size: 13.5px }
+.facts dt { color: var(--muted) } .facts dd { margin: 0; overflow-wrap: anywhere }
+.shows { display: grid; gap: 6px }
+.show { border: 1px solid var(--line); border-left: 4px solid var(--agent, var(--line)); border-radius: 8px; padding: 6px 10px; font-size: 13px; display: grid; gap: 3px }
+.show.cancel { opacity: .55; text-decoration: line-through }
+.edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 12px; background: var(--sunk); border-radius: 10px; padding: 10px 12px }
+.edit .full { grid-column: 1 / -1 }
+.edit label.check { display: flex; gap: 6px; align-items: center; font-size: 14px; color: var(--fg) }
+.thread { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; background: var(--sunk); border-radius: 10px; padding: 10px }
+.msg { max-width: 88%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; border-bottom-left-radius: 3px; padding: 7px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px }
+.msg small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px }
+.msg.out { align-self: flex-end; background: var(--accent-soft); border-bottom-left-radius: 12px; border-bottom-right-radius: 3px }
+.msg.call { align-self: center; background: var(--amber-soft); color: var(--amber); font-size: 12.5px }
+.back { display: none }
+.units { display: grid; gap: 4px; font-size: 13px }
+.units a { color: var(--accent); font-weight: 600; text-decoration: none; margin-left: 6px }
+.urow { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline }
+.urow .rent { font-weight: 650 }
+
+/* agents' phone view */
+.ahead { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 0 10px; border-bottom: 1px solid var(--line) }
+.ahead select { font-size: 15px; font-weight: 650; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden }
+.seg button { border: 0; background: var(--surface); padding: 6px 12px; font-weight: 600 }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface) }
+.banner { background: var(--amber-soft); color: var(--amber); border-radius: 10px; padding: 8px 12px; margin: 10px 0; font-size: 13.5px }
+.sect { margin: 16px 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.sect.red { color: var(--red) }
+.alist { display: grid; gap: 10px; max-width: 640px }
+.acard { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--agent, var(--line)); border-radius: 12px; padding: 12px 14px; display: grid; gap: 7px; box-shadow: var(--shadow) }
+.acard.needs { border-color: var(--red); border-left-color: var(--red) }
+.acard.cancel { opacity: .55 }
+.acard .time { font-size: 20px; font-weight: 700 }
+.arow { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center }
+.acard a { color: var(--accent); font-weight: 600; text-decoration: none }
+.addr { font-size: 15.5px; display: grid; gap: 2px }
+.outs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+.outs button { border: 1px solid var(--line); background: var(--sunk); border-radius: 10px; padding: 12px 8px; font-weight: 650; font-size: 14px; min-height: 48px }
+.outs button.apply { background: var(--blue-soft); color: var(--blue); border-color: var(--blue) }
+.outs button.not { background: var(--red-soft); color: var(--red) }
+.logged { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-weight: 650 }
+.logged .ok { color: var(--accent) } .logged .wait { color: var(--amber) }
+.linkbtn { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 2px 0 }
+.notebox { display: grid; gap: 6px } .notebox textarea { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 14px }
+@media (max-width: 880px) {
+  .main { grid-template-columns: 1fr }
+  .list, .detail { max-height: none; position: static }
+  .main:not(.open) .detail { display: none }
+  .main.open .list { display: none }
+  .back { display: inline-block; justify-self: start }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form class="signin" id="signin" hidden>
+    <h1>AJB Leads</h1>
+    <div class="muted">Sign in with your name and PIN.</div>
+    <label class="field">Name<select id="who"></select></label>
+    <label class="field">PIN<input id="pin" type="password" inputmode="numeric" autocomplete="current-password"></label>
+    <button class="btn primary" id="go" type="submit">Sign in</button>
+    <div class="err" id="signErr"></div>
+  </form>
+
+  <div id="app" hidden>
+    <header>
+      <h1>AJB Leads</h1>
+      <span class="muted" id="built"></span>
+      <span class="grow"></span>
+      <input id="q" type="search" placeholder="Search name, phone, unit or anything said">
+      <button class="btn" id="refresh" type="button">Refresh</button>
+      <button class="btn" id="toProg" type="button">Programs</button>
+      <button class="btn" id="toAgent" type="button">Showings</button>
+      <button class="btn" id="out" type="button">Sign out</button>
+    </header>
+
+    <div class="strip-h" id="stripH">Today's showings</div>
+    <div class="strip" id="strip"></div>
+
+    <div class="tiles" id="tiles"></div>
+    <div class="filters">
+      <select id="fAgent" aria-label="Agent"><option value="">All agents</option></select>
+      <select id="fStage" aria-label="Stage"><option value="">All stages</option></select>
+      <span class="muted" id="count"></span>
+    </div>
+
+    <div class="main" id="main">
+      <div class="list" id="list"></div>
+      <section class="detail" id="detail"><div class="empty">Pick a person to see everything about them.</div></section>
+    </div>
+  </div>
+
+  <div id="progApp" hidden>
+    <header>
+      <h1>Programs</h1>
+      <span class="muted" id="pBuilt"></span>
+      <span class="grow"></span>
+      <input id="pq" type="search" placeholder="Search agency, person, town or note">
+      <button class="btn" id="pRefresh" type="button">Refresh</button>
+      <button class="btn" id="pToLeads" type="button">Leads</button>
+    </header>
+    <div class="tiles" id="pTiles"></div>
+    <div class="main" id="pMain">
+      <div class="list" id="pList"></div>
+      <section class="detail" id="pDetail"></section>
+    </div>
+  </div>
+
+  <div id="agentApp" hidden>
+    <div class="ahead">
+      <select id="aWho" aria-label="Whose showings"></select>
+      <div class="seg"><button type="button" id="dToday" aria-pressed="true"></button><button type="button" id="dTom" aria-pressed="false"></button></div>
+      <span class="grow"></span>
+      <button class="linkbtn" id="aBuilt" type="button"></button>
+      <button class="btn" id="lang" type="button">ES</button>
+      <button class="btn" id="toLeads" type="button" hidden>Leads</button>
+      <button class="btn" id="aOut" type="button"></button>
+    </div>
+    <div class="banner" id="aQueue" hidden></div>
+    <div id="aList"></div>
+  </div>
+</div>
+
+<script>
+var STAGES = ["Interested", "App sent", "Applied", "Approved", "Signed", "Lost"];
+var STAGE_VAR = { "Interested": "--s-interested", "App sent": "--s-appsent", "Applied": "--s-applied", "Approved": "--s-approved", "Signed": "--s-signed", "Lost": "--s-lost" };
+var TABS = [
+  { k: "now", label: "Follow up now", cls: "red", test: function (l, d) { return l.focus && !l.manual.done && l.due && l.due <= d.today } },
+  { k: "apply", label: "Wants to apply, no app", cls: "blue", test: function (l) { return l.focus && l.result === "Interested in applying" && l.stage === "Interested" } },
+  { k: "focus", label: "In focus", cls: "green", test: function (l) { return l.focus } },
+  { k: "apps", label: "Applications", cls: "", test: function (l) { return l.focus && ["App sent", "Applied", "Approved"].indexOf(l.stage) >= 0 } },
+  { k: "dead", label: "Dead (last 30 days)", cls: "", test: function (l) { return !l.focus } },
+  { k: "quo", label: "Quo, last 45 days", cls: "", test: function (l, d) { return !!l.lastIn && l.lastIn.slice(0, 10) >= dayAdd(d.today, -45) },
+    sort: function (a, b) { return a.lastIn < b.lastIn ? 1 : a.lastIn > b.lastIn ? -1 : 0 } }
+];
+var S = { token: "", data: null, tab: "now", sel: "", q: "", agent: "", stage: "", full: {} };
+var store = { get: function (k) { try { return localStorage.getItem(k) } catch (e) { return null } }, set: function (k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (e) {} } };
+
+function $(id) { return document.getElementById(id) }
+function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n }
+function dayAdd(day, n) { var p = String(day).split("-").map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)); return d.toISOString().slice(0, 10) }
+function md(day) { var p = String(day || "").split("-"); return p.length === 3 ? (+p[1]) + "/" + (+p[2]) : String(day || "") }
+function t12(hm) { var m = String(hm || "").match(/^(\d{1,2}):(\d{2})/); if (!m) return hm || ""; var h = +m[1], ap = h >= 12 ? "pm" : "am"; return (h % 12 || 12) + ":" + m[2] + " " + ap }
+function pretty(p) { var d = String(p || "").replace(/\D/g, ""); return d.length === 11 ? "(" + d.slice(1, 4) + ") " + d.slice(4, 7) + "-" + d.slice(7) : p }
+function agentColor(a) { return (S.data && S.data.colors[a]) || "var(--muted)" }
+// Served by Apps Script: google.script.run. Served from GitHub Pages: window.SB_API_URL is set and requests go to the script's doPost.
+function call(fn, args, ok, fail) {
+  var bad = function (e) {
+    if (String(e && e.message || e).indexOf("signed-out") >= 0) return signOut("Your session ended. Please sign in again.");
+    (fail || function (x) { alert(String(x && x.message || x)) })(e);
+  };
+  if (window.SB_API_URL) {
+    fetch(window.SB_API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ fn: fn, args: args }) })
+      .then(function (r) { return r.json() })
+      .then(function (j) { if (j.ok) ok(j.result); else bad({ message: j.error }) })
+      .catch(function (e) { bad({ message: "NetworkError: " + (e && e.message || e) }) });
+    return;
+  }
+  var r = google.script.run.withSuccessHandler(ok).withFailureHandler(bad);
+  r[fn].apply(r, args);
+}
+
+/* ---- sign-in ---- */
+function showSignIn(msg) {
+  $("app").hidden = true; $("signin").hidden = false; $("signErr").textContent = msg || "";
+  call("sbPeopleNames", [], function (names) {
+    var sel = $("who"); sel.replaceChildren();
+    if (!names.length) { $("signErr").textContent = "No one is set up yet. Add a name, PIN, role and Active = TRUE in the People tab of the board sheet."; return }
+    names.forEach(function (n) { var o = el("option", null, n); o.value = n; sel.append(o) });
+    var last = store.get("ajb.who"); if (last && names.indexOf(last) >= 0) sel.value = last;
+  });
+}
+$("signin").onsubmit = function (e) {
+  e.preventDefault(); $("go").disabled = true; $("signErr").textContent = "";
+  call("sbSignIn", [$("who").value, $("pin").value], function (r) {
+    $("go").disabled = false; $("pin").value = "";
+    if (r.error) { $("signErr").textContent = r.error; return }
+    S.token = r.token; S.role = r.role; store.set("ajb.token", r.token); store.set("ajb.who", r.name); store.set("ajb.role", r.role); start();
+  }, function (x) { $("go").disabled = false; $("signErr").textContent = String(x && x.message || x) });
+};
+function signOut(msg) { S.token = ""; store.set("ajb.token", null); store.set("ajb.role", null); store.set("ajb.snap", null); $("agentApp").hidden = true; showSignIn(msg) }
+function start() { if (S.role === "owner" && store.get("ajb.view") !== "agent") load(); else loadAgent() }
+$("toAgent").onclick = function () { store.set("ajb.view", "agent"); loadAgent() };
+$("out").onclick = function () { signOut() };
+
+/* ---- data ---- */
+function showBoard(json) { S.data = JSON.parse(json); $("signin").hidden = true; $("agentApp").hidden = true; $("progApp").hidden = true; $("app").hidden = false; fillFilters(); render() }
+function load() {
+  var cached = store.get("ajb.snap");
+  if (cached && !S.data) { try { showBoard(cached); $("built").textContent += " · refreshing…" } catch (e) {} }
+  else $("built").textContent = "Loading…";
+  call("sbBoardData", [S.token], function (json) { showBoard(json); store.set("ajb.snap", json) },
+    function (x) { if (String(x && x.message || x).indexOf("owner-only") >= 0) { S.role = "agent"; store.set("ajb.role", "agent"); loadAgent() } else alert(String(x && x.message || x)) });
+}
+$("refresh").onclick = load;
+$("q").oninput = function () { S.q = this.value.trim().toLowerCase(); renderList() };
+$("fAgent").onchange = function () { S.agent = this.value; render() };
+$("fStage").onchange = function () { S.stage = this.value; render() };
+
+function fillFilters() {
+  var agents = {}; S.data.leads.forEach(function (l) { l.shows.forEach(function (s) { if (s.agent) agents[s.agent] = 1 }) });
+  var fa = $("fAgent"), keep = fa.value; fa.replaceChildren(el("option", null, "All agents")); fa.firstChild.value = "";
+  Object.keys(agents).sort().forEach(function (a) { var o = el("option", null, a); o.value = a; fa.append(o) }); fa.value = keep;
+  var fs = $("fStage"); if (fs.options.length < 2) STAGES.forEach(function (s) { var o = el("option", null, s); o.value = s; fs.append(o) });
+}
+
+function hay(l) {
+  return [l.name, l.phone, l.units, l.town, l.why, l.result, l.app, l.profile, l.manual.note, l.manual.by].concat(l.notes.map(function (n) { return n.x }))
+    .concat(l.shows.map(function (s) { return s.addresses + " " + (s.said || "") })).join(" ").toLowerCase();
+}
+function pool() {
+  return S.data.leads.filter(function (l) {
+    if (S.agent && !l.shows.some(function (s) { return s.agent === S.agent })) return false;
+    if (S.stage && l.stage !== S.stage) return false;
+    if (S.q && hay(l).indexOf(S.q) < 0 && String(l.phone).replace(/\D/g, "").indexOf(S.q.replace(/\D/g, "") || "~") < 0) return false;
+    return true;
+  });
+}
+
+function render() {
+  var d = S.data;
+  $("built").textContent = "Updated " + md(d.builtAt.slice(0, 10)) + " " + t12(d.builtAt.slice(11));
+  renderStrip(); renderTiles(); renderList(); renderDetail();
+}
+function renderStrip() {
+  var box = $("strip"), list = S.data.showsToday.filter(function (s) { return s.status !== "cancelled" }); box.replaceChildren();
+  $("stripH").hidden = box.hidden = !list.length;
+  var now = new Date(), hm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  list.forEach(function (s) {
+    var lead = S.data.leads.filter(function (l) { return l.phone === s.phone })[0];
+    var c = el(lead ? "button" : "div", "slot" + (s.start < hm ? " past" : "")); c.style.setProperty("--agent", agentColor(s.agent));
+    c.append(el("b", null, t12(s.start)), el("span", "a", s.addresses), el("span", "muted", [s.agent, s.name || pretty(s.phone)].filter(Boolean).join(" · ")));
+    var chips = el("div", "chips");
+    if (s.result) chips.append(el("span", "chip " + (s.result === "Interested in applying" ? "blue" : s.result === "Not interested" ? "" : "amber"), s.result));
+    else chips.append(el("span", "chip " + (s.confirmed === "yes" ? "unit" : "amber"), s.confirmed === "yes" ? "Confirmed" : "Not confirmed"));
+    c.append(chips);
+    if (lead) { c.type = "button"; c.onclick = function () { openLead(lead.phone) } }
+    box.append(c);
+  });
+}
+function renderTiles() {
+  var box = $("tiles"), base = pool(); box.replaceChildren();
+  TABS.forEach(function (t) {
+    var n = base.filter(function (l) { return t.test(l, S.data) }).length;
+    var b = el("button", "tile " + t.cls); b.type = "button"; b.setAttribute("aria-pressed", String(S.tab === t.k));
+    b.append(el("b", null, String(n)), el("span", null, t.label));
+    b.onclick = function () { S.tab = t.k; renderTiles(); renderList() };
+    box.append(b);
+  });
+}
+function sortLeads(a, b) {
+  if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+  if ((a.due || "9") !== (b.due || "9")) return (a.due || "9") < (b.due || "9") ? -1 : 1;
+  return (b.lastEvent || "") < (a.lastEvent || "") ? -1 : 1;
+}
+function renderList() {
+  var tab = TABS.filter(function (t) { return t.k === S.tab })[0], list = $("list");
+  var rows = pool().filter(function (l) { return tab.test(l, S.data) }).sort(tab.sort || sortLeads);
+  $("count").textContent = rows.length + " " + (rows.length === 1 ? "person" : "people");
+  list.replaceChildren();
+  if (!rows.length) list.append(el("div", "empty", "Nobody here right now."));
+  rows.forEach(function (l) {
+    var c = el("button", "card" + (l.phone === S.sel ? " sel" : "")); c.type = "button";
+    c.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--line") + ")");
+    var top = el("div", "top"); top.append(el("span", "nm", l.name || pretty(l.phone)));
+    var st = el("span", "chip stage", l.stage); st.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--s-lost") + ")"); top.append(st);
+    c.append(top, el("div", "sub", [l.name ? pretty(l.phone) : "", l.town, l.income && "income " + l.income, l.credit && "credit " + l.credit].filter(Boolean).join(" · ")));
+    var chips = el("div", "chips");
+    String(l.units || "").split(";").slice(0, 2).forEach(function (u) { if (u.trim()) chips.append(el("span", "chip unit", u.trim())) });
+    if (l.result) chips.append(el("span", "chip " + (l.result === "Interested in applying" ? "blue" : l.result === "Not interested" ? "" : "amber"), l.result + (l.resultDate ? " · " + md(l.resultDate) : "")));
+    if (l.app) chips.append(el("span", "chip", "App: " + l.app));
+    if (l.texts && l.texts.waiting === "you") chips.append(el("span", "chip amber", "Waiting on you"));
+    else if (l.texts && l.texts.waiting === "them" && l.texts.lastOut) chips.append(el("span", "chip", "Waiting on them since " + md(l.texts.lastOut.slice(0, 10))));
+    if (l.dnt) chips.append(el("span", "chip red", l.dnt === "opted out" ? "Opted out: don't text" : "Number doesn't work"));
+    if (l.overdue) chips.append(el("span", "chip red", "Overdue since " + md(l.due)));
+    else if (l.due && l.focus && !l.manual.done) chips.append(el("span", "chip amber", "Follow up " + (l.due === S.data.today ? "today" : md(l.due))));
+    var agent = (l.shows[l.shows.length - 1] || {}).agent;
+    if (agent) { var a = el("span", "chip"); var dot = el("span", "dot"); dot.style.setProperty("--agent", agentColor(agent)); a.append(dot, document.createTextNode(agent)); chips.append(a) }
+    c.append(chips, el("div", "why", l.why));
+    c.onclick = function () { openLead(l.phone) };
+    list.append(c);
+  });
+}
+function openLead(phone) { S.sel = phone; $("main").classList.add("open"); renderList(); renderDetail() }
+
+function renderDetail() {
+  var box = $("detail"), l = S.data.leads.filter(function (x) { return x.phone === S.sel })[0];
+  box.replaceChildren();
+  if (!l) { box.append(el("div", "empty", "Pick a person to see everything about them.")); return }
+  var back = el("button", "btn back", "← Back"); back.type = "button"; back.onclick = function () { $("main").classList.remove("open") };
+  var head = el("div"); head.append(el("h2", null, l.name || pretty(l.phone)));
+  var ph = el("div", "phones");
+  var tel = el("a", null, pretty(l.phone)); tel.href = "tel:" + l.phone;
+  var quo = el("a", null, "Open in Quo"); quo.href = "openphone://dial?number=" + encodeURIComponent(l.phone);
+  ph.append(tel, quo); head.append(ph);
+  var chips = el("div", "chips"); var st = el("span", "chip stage", l.stage); st.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--s-lost") + ")"); chips.append(st);
+  chips.append(el("span", "chip", l.focus ? "In focus: " + l.why : "Dead: " + l.why));
+  if (l.dnt) chips.append(el("span", "chip red", l.dnt === "opted out" ? "Opted out: don't text" : "Number doesn't work"));
+  head.append(chips);
+  box.append(back, head);
+
+  var pr = el("div"); pr.append(el("h3", null, "Profile"));
+  var p = el("div", "profile" + (l.profile ? "" : " none"), l.profile || (S.data.hasProfiles ? "The profile is written within the hour." : "Written profiles start once the Claude API key is added to the script."));
+  pr.append(p); if (l.profileAt) pr.append(el("div", "muted", "Written " + md(l.profileAt.slice(0, 10)))); box.append(pr);
+
+  var facts = [["Units", l.units], ["Town", l.town], ["Income", l.income], ["Credit", l.credit], ["Application", l.app && (l.app + " (" + md(l.appDate) + ")")],
+    ["Last showing", l.lastShowing], ["Next showing", l.nextShowing], ["Follow-up due", l.due && (md(l.due) + (l.overdue ? " (overdue)" : ""))], ["Lead card", l.cardDay && md(l.cardDay)]];
+  Object.keys(l.card || {}).forEach(function (k) { if (["name", "apt", "town", "income", "credit"].indexOf(k) < 0) facts.push([k.charAt(0).toUpperCase() + k.slice(1), l.card[k]]) });
+  var dl = el("dl", "facts"); facts.forEach(function (f) { if (f[1]) dl.append(el("dt", null, f[0]), el("dd", null, f[1])) });
+  var fx = el("div"); fx.append(el("h3", null, "Details"), dl); box.append(fx);
+
+  if (l.vac && l.vac.length) {
+    var vw = el("div"); vw.append(el("h3", null, "Open units in these buildings"), unitList(l.vac));
+    if (S.data.vacancyFile) vw.append(el("div", "muted", "From " + S.data.vacancyFile));
+    box.append(vw);
+  }
+
+  box.append(editForm(l));
+
+  if (l.shows.length) {
+    var sw = el("div"); sw.append(el("h3", null, "Showings"));
+    var sl = el("div", "shows");
+    l.shows.slice().reverse().forEach(function (s) {
+      var r = el("div", "show" + (s.status === "cancelled" ? " cancel" : "")); r.style.setProperty("--agent", agentColor(s.agent));
+      r.append(el("div", null, md(s.date) + " " + t12(s.start) + " · " + s.addresses + " · " + s.agent + (s.confirmed === "yes" ? " · confirmed" : "")));
+      if (s.result || s.said) r.append(el("div", "muted", (s.result ? s.result + (s.source === "whatsapp" ? " (agent's WhatsApp)" : "") : "") + (s.said ? " · \"" + s.said + "\"" : "")));
+      if (s.note) r.append(el("div", "muted", "Note: " + s.note));
+      sl.append(r);
+    });
+    sw.append(sl); box.append(sw);
+  }
+
+  var full = S.full[l.phone], tx = full && full.thread ? full : l.texts;
+  if (!full) loadFullThread(l.phone);
+  if ((tx && tx.thread && tx.thread.length) || (full && full.loading)) {
+    var qw = el("div"); qw.append(el("h3", null, "Texts on the Avi Rentals line" + (tx && tx.waiting ? " · waiting on " + tx.waiting : "")));
+    if (full && full.loading) qw.append(el("div", "muted", "Loading the whole conversation from Quo…"));
+    else if (full && full.error) qw.append(el("div", "muted", "Couldn't load the whole conversation: " + full.error));
+    else if (full) qw.append(el("div", "muted", "Whole conversation from Quo · " + full.thread.length + " messages and calls"));
+    var qt = el("div", "thread");
+    ((tx && tx.thread) || []).forEach(function (t) {
+      var m = el("div", "msg" + (t.d === "o" ? " out" : "") + (t.k === "c" ? " call" : ""));
+      m.append(el("small", null, md(t.at.slice(0, 10)) + " " + t12(t.at.slice(11)) + " · " + (t.d === "o" ? "AJB" : "Lead")), document.createTextNode(t.x || (t.m ? "Photo or file" : "")));
+      qt.append(m);
+    });
+    qw.append(qt); box.append(qw);
+    qt.scrollTop = qt.scrollHeight; // newest at the bottom
+  }
+
+  var tw = el("div"); tw.append(el("h3", null, "Team WhatsApp about this person (" + l.notes.length + ")"));
+  var th = el("div", "thread");
+  if (!l.notes.length) th.append(el("div", "muted", "No team messages mention this person."));
+  l.notes.forEach(function (n) { var m = el("div", "msg"); m.append(el("small", null, md(n.day) + " " + t12(n.hm) + " · " + n.chat + " · " + n.s), document.createTextNode(n.x)); th.append(m) });
+  tw.append(th); box.append(tw);
+  th.scrollTop = th.scrollHeight; // newest at the bottom; scroll up for older
+  box.scrollTop = 0;
+}
+
+// Open units from the vacancy list: "123 Main St #2 · 2 BR · $1,450 · READY · voucher OK · Video"
+function unitList(units) {
+  var box = el("div", "units");
+  units.forEach(function (u) {
+    var r = el("div", "urow");
+    r.append(el("span", null, (u.address || "") + (u.unit ? " #" + u.unit : "")), el("span", "rent", [u.beds && (/^\d/.test(u.beds) ? u.beds + " BR" : u.beds), u.rent].filter(Boolean).join(" · ")));
+    if (u.status) r.append(el("span", "chip" + (/ready|available/i.test(u.status) && !/not/i.test(u.status) ? " unit" : ""), u.status));
+    if (u.voucher) r.append(el("span", "chip blue", "voucher OK"));
+    if (/^https?:\/\//.test(u.video || "")) { var v = el("a", null, "Video"); v.href = u.video; v.target = "_blank"; v.rel = "noopener"; r.append(v) }
+    box.append(r);
+  });
+  return box;
+}
+
+// ---------- Programs view: agencies and caseworkers who send voucher and program renters (owner only, read only)
+var P = { data: null, tab: "us", q: "", sel: -1 };
+var PTABS = [
+  { k: "us", label: "Waiting on us", cls: "red", test: function (c) { return c.state === "Waiting on us" } },
+  { k: "nudge", label: "Nudge due", cls: "amber", test: function (c) { return c.state !== "Waiting on us" && c.overdue } },
+  { k: "start", label: "Start here", cls: "blue", test: function (c) { return c.state === "Start here" } },
+  { k: "touch", label: "In touch", cls: "green", test: function (c) { return ["Replied", "Waiting on them", "No reply yet"].indexOf(c.state) >= 0 } },
+  { k: "all", label: "All contacts", cls: "", test: function () { return true } },
+  { k: "units", label: "Voucher units", cls: "", units: true }
+];
+function loadPrograms(fresh) {
+  $("pBuilt").textContent = "Loading…";
+  call("sbProgramsData", [S.token, !!fresh], function (json) {
+    P.data = JSON.parse(json); $("app").hidden = true; $("agentApp").hidden = true; $("progApp").hidden = false;
+    $("pBuilt").textContent = "Updated " + md(P.data.builtAt.slice(0, 10)) + " " + t12(P.data.builtAt.slice(11)); renderP();
+  });
+}
+$("toProg").onclick = function () { loadPrograms() };
+$("pRefresh").onclick = function () { loadPrograms(true) };
+$("pToLeads").onclick = function () { $("progApp").hidden = true; load() };
+$("pq").oninput = function () { P.q = this.value.trim().toLowerCase(); renderPList() };
+function townsOf(c) { return String(c.towns || "").toLowerCase().split(/[,;\/]| and /).map(function (t) { return t.trim() }).filter(Boolean) }
+function unitsIn(towns) { return P.data.units.filter(function (u) { return towns.indexOf(String(u.city).toLowerCase()) >= 0 }) }
+function renderP() {
+  var box = $("pTiles"); box.replaceChildren();
+  PTABS.forEach(function (t) {
+    var n = t.units ? P.data.units.length : P.data.contacts.filter(t.test).length;
+    var b = el("button", "tile " + t.cls); b.type = "button"; b.setAttribute("aria-pressed", String(P.tab === t.k));
+    b.append(el("b", null, String(n)), el("span", null, t.label));
+    b.onclick = function () { P.tab = t.k; P.sel = -1; renderP() };
+    box.append(b);
+  });
+  renderPList(); renderPDetail();
+}
+function renderPList() {
+  var list = $("pList"), tab = PTABS.filter(function (t) { return t.k === P.tab })[0]; list.replaceChildren();
+  if (tab.units) {
+    var by = {};
+    P.data.units.filter(function (u) { return !P.q || [u.address, u.city, u.beds, u.rent].join(" ").toLowerCase().indexOf(P.q) >= 0 })
+      .forEach(function (u) { var c = u.city || "No town listed"; (by[c] = by[c] || []).push(u) });
+    var towns = Object.keys(by).sort();
+    if (!towns.length) list.append(el("div", "empty", "No voucher-OK units right now."));
+    towns.forEach(function (t) {
+      var sec = el("div", "card"), top = el("div", "top");
+      top.append(el("span", "nm", t), el("span", "chip", by[t].length + (by[t].length === 1 ? " unit" : " units"))); sec.append(top);
+      sec.append(unitList(by[t].sort(function (a, b) { return String(a.beds).localeCompare(String(b.beds)) })));
+      list.append(sec);
+    });
+    return;
+  }
+  var rows = P.data.contacts.map(function (c, i) { c.i = i; return c }).filter(tab.test).filter(function (c) {
+    return !P.q || [c.org, c.name, c.title, c.email, c.program, c.region, c.towns, c.said, c.nextStep, c.notes, c.response, c.follow].join(" ").toLowerCase().indexOf(P.q) >= 0;
+  }).sort(function (a, b) { return (a.overdue === b.overdue ? 0 : a.overdue ? -1 : 1) || (String(a.due || "9") < String(b.due || "9") ? -1 : String(a.due || "9") > String(b.due || "9") ? 1 : 0) || (+a.rank || 9) - (+b.rank || 9) });
+  if (!rows.length) list.append(el("div", "empty", "Nobody here right now."));
+  rows.forEach(function (c) {
+    var b = el("button", "card" + (c.i === P.sel ? " sel" : "")); b.type = "button";
+    var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (c.state === "Waiting on us" ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
+    b.append(el("div", "sub", [c.name, c.title, c.program].filter(Boolean).join(" · ")));
+    var chips = el("div", "chips");
+    if (c.due) chips.append(el("span", "chip " + (c.overdue ? "red" : "amber"), (c.state === "Waiting on us" ? "Reply " : "Nudge ") + (c.overdue ? "overdue since " : "") + md(c.due)));
+    if (c.voucherUnits) chips.append(el("span", "chip blue", c.voucherUnits + " voucher units in their towns"));
+    if (c.towns) chips.append(el("span", "chip unit", c.towns));
+    b.append(chips);
+    if (c.nextStep || c.follow) b.append(el("div", "why", c.nextStep || c.follow));
+    b.onclick = function () { P.sel = c.i; $("pMain").classList.add("open"); renderPList(); renderPDetail() };
+    list.append(b);
+  });
+}
+function renderPDetail() {
+  var box = $("pDetail"), c = P.data.contacts[P.sel]; box.replaceChildren();
+  if (P.tab === "units") { box.append(el("div", "empty", "Voucher-OK units from " + (P.data.vacancyFile || "the vacancy list") + ": not tagged \"No Section 8\", with beds and rent, and not a private-listing unit. Door codes are never copied here.")); return }
+  if (!c) { box.append(el("div", "empty", "Pick a contact to see everything about them.")); return }
+  var back = el("button", "btn back", "← Back"); back.type = "button"; back.onclick = function () { $("pMain").classList.remove("open") };
+  var head = el("div"); head.append(el("h2", null, c.org || c.name));
+  var ph = el("div", "phones");
+  if (c.phone) { var tel = el("a", null, c.phone); tel.href = "tel:" + String(c.phone).replace(/x.*$/i, "").replace(/[^\d+]/g, ""); ph.append(tel) }
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || "")) { var em = el("a", null, c.email); em.href = "mailto:" + c.email; ph.append(em) }
+  head.append(el("div", "muted", [c.name, c.title].filter(Boolean).join(" · ")), ph);
+  box.append(back, head);
+  var facts = [["Status", c.state + (c.due ? " · " + (c.state === "Waiting on us" ? "reply " : "nudge ") + md(c.due) + (c.overdue ? " (overdue)" : "") : "")],
+    ["Program", [c.program, c.tier, c.rank && "rank " + c.rank].filter(Boolean).join(" · ")], ["Region", c.region], ["Towns served", c.towns],
+    ["Emailed", c.emailedOn && md(c.emailedOn)], ["First contact", c.first && md(c.first)], ["Replied", [c.replied, c.replyOn && md(c.replyOn)].filter(Boolean).join(" · ")],
+    ["What they said", c.said || c.response], ["Waiting on", c.waitingOn], ["Next step", c.nextStep], ["Follow-up notes", c.follow],
+    ["How to approach", c.approach], ["Office", c.office], ["Confidence", c.confidence], ["Notes", c.notes]];
+  var dl = el("dl", "facts"); facts.forEach(function (f) { if (f[1]) dl.append(el("dt", null, f[0]), el("dd", null, f[1])) });
+  var fx = el("div"); fx.append(el("h3", null, "Details"), dl); box.append(fx);
+  var us = unitsIn(townsOf(c));
+  var uw = el("div"); uw.append(el("h3", null, "Voucher units in their towns (" + us.length + ")"));
+  uw.append(us.length ? unitList(us) : el("div", "muted", "None open right now.")); box.append(uw);
+  box.append(el("div", "muted", "Edit contacts in the Program-Contacts-Master sheet; this page only reads it."));
+  box.scrollTop = 0;
+}
+
+// The whole Quo conversation for one person, fetched once per page load when their card opens.
+function loadFullThread(phone) {
+  S.full[phone] = { loading: true };
+  call("sbFullThread", [S.token, phone], function (json) { S.full[phone] = JSON.parse(json); if (S.sel === phone) renderDetail() },
+    function (x) { S.full[phone] = { error: String(x && x.message || x) }; if (S.sel === phone) renderDetail() });
+}
+
+// Same as leadManualPatch in Rules.js: what a save changes on screen until the next rebuild.
+function applyManual(lead, vals) {
+  var map = { "Stage Override": "stage", "Focus": "focus", "Next Follow-up": "next", "Handled By": "by", "Follow-up Done": "done", "Note": "note" };
+  Object.keys(map).forEach(function (c) { if (vals.hasOwnProperty(c)) lead.manual[map[c]] = vals[c] });
+  var m = lead.manual;
+  if (m.stage) lead.stage = m.stage;
+  if (m.focus === "drop") { lead.focus = false; lead.why = "dropped by hand" } else if (m.focus === "keep") lead.focus = true;
+  if (m.next) { lead.due = m.next; lead.overdue = false }
+  if (m.done) lead.overdue = false;
+  return lead;
+}
+
+function editForm(l) {
+  var f = el("form", "edit"), m = l.manual;
+  var sel = function (label, opts, v) { var w = el("label", "field", label), s = el("select"); opts.forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; s.append(op) }); s.value = v || ""; w.append(s); f.append(w); return s };
+  var stage = sel("Stage", [["", "Automatic (" + l.stage + ")"]].concat(STAGES.map(function (s) { return [s, s] })), m.stage);
+  var focus = sel("Focus", [["", "Automatic"], ["keep", "Keep in focus"], ["drop", "Drop (dead)"]], m.focus);
+  var nw = el("label", "field", "Next follow-up"), next = el("input"); next.type = "date"; next.value = m.next || ""; nw.append(next); f.append(nw);
+  var bw = el("label", "field", "Handled by"), by = el("input"); by.value = m.by || ""; bw.append(by); f.append(bw);
+  var dw = el("label", "check"), done = el("input"); done.type = "checkbox"; done.checked = !!m.done; dw.append(done, document.createTextNode("Follow-up done")); f.append(dw);
+  var tw = el("label", "field full", "Note"), note = el("textarea"); note.rows = 2; note.value = m.note || ""; tw.append(note); f.append(tw);
+  var save = el("button", "btn primary", "Save"); save.type = "submit"; var msg = el("span", "muted"); var row = el("div", "full"); row.append(save, document.createTextNode(" "), msg); f.append(row);
+  f.onsubmit = function (e) {
+    e.preventDefault();
+    var vals = { "Stage Override": stage.value, "Focus": focus.value, "Next Follow-up": next.value, "Handled By": by.value, "Follow-up Done": done.checked, "Note": note.value };
+    var before = JSON.stringify(l);
+    applyManual(l, vals); render(); S.saving = l.phone;                    // shows on screen at once
+    call("sbSaveLead", [S.token, l.phone, vals], function () { S.saving = ""; S.savedAt = l.phone; renderDetail() },
+      function (x) { var old = JSON.parse(before); Object.keys(old).forEach(function (k) { l[k] = old[k] }); S.saving = ""; render(); alert("Couldn't save: " + String(x && x.message || x)) });
+  };
+  if (S.saving === l.phone) msg.textContent = "Saving…"; else if (S.savedAt === l.phone) msg.textContent = "Saved. Stage, focus and due date refresh within a minute.";
+  var w = el("div"); w.append(el("h3", null, "Follow-up"), f); return w;
+}
+
+/* ---- agents' phone view (spec 8, 9, 15.3, 15.4) ---- */
+var A = { data: null, who: null, day: "today", open: {}, undo: {}, lang: store.get("ajb.lang") || "en" };
+var TX = {
+  en: { today: "Today", tomorrow: "Tomorrow", everyone: "Everyone", out: "Sign out", needs: "Needs result", coming: "Coming up", done: "Done", cancelled: "Cancelled",
+    none: "No showings.", log: "Log result", change: "Change", undo: "Undo", note: "Add note", saveNote: "Save note", text: "Text", copy: "Copy number", copied: "Copied",
+    confirmed: "Confirmed", notConfirmed: "Not confirmed", isNew: "NEW", changed: "CHANGED", pending: "Not sent yet", by: "by", updated: "Updated",
+    queue: function (n) { return n + (n === 1 ? " result is" : " results are") + " not sent yet. It will send when the signal is back." },
+    o: { "Interested in applying": "Interested in applying", "Interested in other options": "Other options", "Still deciding": "Still deciding",
+      "Reach out today": "Reach out today", "Not interested": "Not interested", "No-show": "No-show" } },
+  es: { today: "Hoy", tomorrow: "Mañana", everyone: "Todos", out: "Salir", needs: "Falta resultado", coming: "Próximas", done: "Listas", cancelled: "Canceladas",
+    none: "No hay citas.", log: "Anotar resultado", change: "Cambiar", undo: "Deshacer", note: "Añadir nota", saveNote: "Guardar nota", text: "Mensaje", copy: "Copiar número", copied: "Copiado",
+    confirmed: "Confirmada", notConfirmed: "Sin confirmar", isNew: "NUEVA", changed: "CAMBIÓ", pending: "Sin enviar", by: "por", updated: "Actualizado",
+    queue: function (n) { return n + (n === 1 ? " resultado no se ha enviado" : " resultados no se han enviado") + ". Se enviará cuando vuelva la señal." },
+    o: { "Interested in applying": "Quiere aplicar", "Interested in other options": "Otras opciones", "Still deciding": "Lo está pensando",
+      "Reach out today": "Llamar hoy", "Not interested": "No le interesa", "No-show": "No vino" } }
+};
+function tx(k) { return TX[A.lang][k] }
+function queue() { try { return JSON.parse(store.get("ajb.queue") || "[]") } catch (e) { return [] } }
+function setQueue(q) { store.set("ajb.queue", q.length ? JSON.stringify(q) : null) }
+
+function loadAgent() {
+  $("aBuilt").textContent = "…";
+  call("sbAgentData", [S.token], function (json) {
+    A.data = JSON.parse(json); $("signin").hidden = true; $("app").hidden = true; $("progApp").hidden = true; $("agentApp").hidden = false;
+    $("toLeads").hidden = A.data.role !== "owner";
+    if (A.who === null) A.who = A.data.myAgent || "";
+    queue().forEach(function (t) { var s = findShow(t.id); if (s) { s.outcome = t.outcome; s.pending = true; if (t.note != null) s.note = t.note } }); // taps not sent yet stay on screen
+    renderAgent(); sendQueue();
+  });
+}
+function findShow(id) { return A.data && A.data.shows.filter(function (s) { return s.id === id })[0] }
+function nowHm() { var d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }
+function tomorrow() { var p = A.data.today.split("-").map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + 1)); return d.toISOString().slice(0, 10) }
+
+function renderAgent() {
+  var d = A.data, who = $("aWho"); who.replaceChildren();
+  [["", tx("everyone")]].concat(d.agents.map(function (a) { return [a, a] })).forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; who.append(op) });
+  who.value = A.who;
+  $("dToday").textContent = tx("today"); $("dTom").textContent = tx("tomorrow"); $("aOut").textContent = tx("out"); $("lang").textContent = A.lang === "en" ? "ES" : "EN";
+  $("dToday").setAttribute("aria-pressed", String(A.day === "today")); $("dTom").setAttribute("aria-pressed", String(A.day === "tomorrow"));
+  $("aBuilt").textContent = tx("updated") + " " + t12(d.now.slice(11));
+  var q = queue(); $("aQueue").hidden = !q.length; $("aQueue").textContent = q.length ? TX[A.lang].queue(q.length) : "";
+
+  var mine = d.shows.filter(function (s) { return !A.who || s.agent === A.who }), hm = nowHm(), today = d.today, list = $("aList");
+  var started = function (s) { return s.date < today || (s.date === today && s.start <= hm) };
+  var groups = [];
+  if (A.day === "today") {
+    groups.push(["needs", tx("needs"), mine.filter(function (s) { return s.status !== "cancelled" && !s.outcome && s.start && started(s) && s.date <= today })]);
+    groups.push(["coming", tx("coming"), mine.filter(function (s) { return s.date === today && s.status !== "cancelled" && !s.outcome && !started(s) })]);
+    groups.push(["done", tx("done"), mine.filter(function (s) { return s.date === today && s.status !== "cancelled" && s.outcome })]);
+    groups.push(["cancel", tx("cancelled"), mine.filter(function (s) { return s.date === today && s.status === "cancelled" })]);
+  } else {
+    var tom = tomorrow();
+    groups.push(["coming", tx("tomorrow"), mine.filter(function (s) { return s.date === tom })]);
+  }
+  list.replaceChildren();
+  var any = false;
+  groups.forEach(function (g) {
+    if (!g[2].length) return; any = true;
+    list.append(el("div", "sect" + (g[0] === "needs" ? " red" : ""), g[1] + " (" + g[2].length + ")"));
+    var box = el("div", "alist");
+    g[2].sort(function (a, b) { return (a.date + a.start) < (b.date + b.start) ? -1 : 1 }).forEach(function (s) { box.append(agentCard(s, g[0])) });
+    list.append(box);
+  });
+  if (!any) list.append(el("div", "empty", tx("none")));
+}
+
+function agentCard(s, group) {
+  var c = el("div", "acard" + (group === "needs" ? " needs" : "") + (group === "cancel" ? " cancel" : "")); c.style.setProperty("--agent", (A.data.colors[s.agent]) || "var(--line)");
+  var top = el("div", "arow");
+  top.append(el("span", "time", t12(s.start)));
+  if (s.date !== A.data.today) top.append(el("span", "chip", md(s.date)));
+  if (!A.who) top.append(el("span", "chip", s.agent));
+  if (s.status !== "cancelled") top.append(el("span", "chip " + (s.confirmed === "yes" ? "unit" : "amber"), s.confirmed === "yes" ? tx("confirmed") : tx("notConfirmed")));
+  if (s.changeAt && s.changeAt.slice(0, 10) === A.data.today && s.change) top.append(el("span", "chip red", s.change === "new" ? tx("isNew") : tx("changed") + ": " + s.change));
+  c.append(top);
+
+  var addr = el("div", "addr");
+  String(s.addresses || s.raw).split(";").forEach(function (a) {
+    a = a.trim(); if (!a) return;
+    var link = el("a", null, a + " ›"); link.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(a + (s.city ? ", " + s.city : "") + ", CT"); link.target = "_blank"; link.rel = "noopener";
+    addr.append(link);
+  });
+  c.append(addr);
+  if (s.units && s.units.length) c.append(unitList(s.units));
+
+  if (s.phone) {
+    var p = el("div", "arow");
+    if (s.prospect) p.append(el("b", null, s.prospect));
+    var call = el("a", null, pretty(s.phone)); call.href = "openphone://dial?number=" + encodeURIComponent(s.phone);
+    var text = el("a", null, tx("text")); text.href = "openphone://message?number=" + encodeURIComponent(s.phone);
+    var copy = el("button", "linkbtn", tx("copy")); copy.type = "button";
+    copy.onclick = function () { try { navigator.clipboard.writeText(s.phone); copy.textContent = tx("copied") } catch (e) {} };
+    p.append(call, text, copy); c.append(p);
+  }
+  if (s.tags) c.append(el("div", "muted", s.tags));
+
+  if (s.status === "cancelled") return c;
+  if (s.outcome && !A.open[s.id]) {
+    var lg = el("div", "logged");
+    lg.append(el("span", s.pending ? "wait" : "ok", (s.pending ? "… " : "✓ ") + (TX[A.lang].o[s.outcome] || s.outcome)));
+    if (s.pending) lg.append(el("span", "muted", tx("pending")));
+    else if (s.outcomeBy) lg.append(el("span", "muted", tx("by") + " " + s.outcomeBy + " " + t12(String(s.outcomeAt).slice(11, 16))));
+    if (A.undo[s.id]) { var u = el("button", "btn", tx("undo")); u.type = "button"; u.onclick = function () { tap(s, A.undo[s.id].prev) }; lg.append(u) }
+    var ch = el("button", "linkbtn", tx("change")); ch.type = "button"; ch.onclick = function () { A.open[s.id] = 1; renderAgent() }; lg.append(ch);
+    c.append(lg);
+  } else if (group === "needs" || A.open[s.id]) {
+    var outs = el("div", "outs");
+    A.data.outcomes.forEach(function (o) {
+      var b = el("button", o === "Interested in applying" ? "apply" : o === "Not interested" ? "not" : "", TX[A.lang].o[o] || o); b.type = "button";
+      if (o === s.outcome) b.setAttribute("aria-pressed", "true");
+      b.onclick = function () { tap(s, o) };
+      outs.append(b);
+    });
+    c.append(outs);
+  } else {
+    var open = el("button", "btn", tx("log")); open.type = "button"; open.onclick = function () { A.open[s.id] = 1; renderAgent() }; c.append(open);
+  }
+  // note
+  var nb = el("div", "notebox");
+  if (A.open["note:" + s.id]) {
+    var ta = el("textarea"); ta.rows = 2; ta.value = s.note || "";
+    var sv = el("button", "btn", tx("saveNote")); sv.type = "button";
+    sv.onclick = function () { delete A.open["note:" + s.id]; enqueue({ id: s.id, outcome: s.outcome || "", note: ta.value, tapAt: Date.now() }); s.note = ta.value; s.pending = true; renderAgent() };
+    nb.append(ta, sv);
+  } else {
+    if (s.note) nb.append(el("div", "muted", "📝 " + s.note));
+    var an = el("button", "linkbtn", tx("note")); an.type = "button"; an.onclick = function () { A.open["note:" + s.id] = 1; renderAgent() }; nb.append(an);
+  }
+  c.append(nb);
+  return c;
+}
+
+// One tap: shown at once, kept on the phone until the server confirms, undo for 5 seconds.
+function tap(s, outcome) {
+  var prev = s.outcome || "";
+  s.outcome = outcome; s.pending = true; delete A.open[s.id];
+  clearTimeout(A.undo[s.id] && A.undo[s.id].t);
+  A.undo[s.id] = outcome !== prev ? { prev: prev, t: setTimeout(function () { delete A.undo[s.id]; renderAgent() }, 5000) } : null;
+  if (!A.undo[s.id]) delete A.undo[s.id];
+  enqueue({ id: s.id, outcome: outcome, note: null, tapAt: Date.now() });
+  renderAgent();
+}
+function enqueue(t) { var q = queue().filter(function (x) { return !(x.id === t.id && t.note == null && x.note == null) }); q.push(t); setQueue(q); sendQueue() }
+var sending = false;
+function sendQueue() {
+  if (sending || !S.token) return;
+  var q = queue(); if (!q.length) return;
+  sending = true; var t = q[0];
+  google.script.run.withSuccessHandler(function (r) {
+    sending = false; setQueue(queue().filter(function (x) { return !(x.id === t.id && x.tapAt === t.tapAt) }));
+    var s = findShow(t.id);
+    if (s) { s.outcome = r.outcome; s.outcomeAt = r.outcomeAt; s.outcomeBy = r.outcomeBy; s.note = r.note; s.pending = queue().some(function (x) { return x.id === t.id }) }
+    renderAgent(); sendQueue();
+  }).withFailureHandler(function (e) {
+    sending = false;
+    var m = String(e && e.message || e);
+    if (m.indexOf("signed-out") >= 0) return signOut("Your session ended. Sign in again; your taps are kept and will be sent.");
+    if (/no longer on the board|Unknown result/.test(m)) { setQueue(queue().filter(function (x) { return x !== t && !(x.id === t.id && x.tapAt === t.tapAt) })); sendQueue() }
+    renderAgent();
+  }).sbSaveOutcome(S.token, t.id, t.outcome, t.note, t.tapAt);
+}
+window.addEventListener("online", sendQueue);
+setInterval(sendQueue, 30000);
+setInterval(function () { // refresh every 2 minutes while in view, never while typing a note
+  if (!$("agentApp").hidden && document.visibilityState === "visible" && !(document.activeElement && document.activeElement.tagName === "TEXTAREA")) loadAgent();
+}, 120000);
+document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && !$("agentApp").hidden) loadAgent() });
+$("aWho").onchange = function () { A.who = this.value; renderAgent() };
+$("dToday").onclick = function () { A.day = "today"; renderAgent() };
+$("dTom").onclick = function () { A.day = "tomorrow"; renderAgent() };
+$("aBuilt").onclick = loadAgent;
+$("lang").onclick = function () { A.lang = A.lang === "en" ? "es" : "en"; store.set("ajb.lang", A.lang); renderAgent() };
+$("toLeads").onclick = function () { store.set("ajb.view", null); load() };
+$("aOut").onclick = function () { signOut() };
+
+/* ---- start ---- */
+S.token = store.get("ajb.token") || "";
+S.role = store.get("ajb.role") || "";
+if (S.token) start(); else showSignIn();
+</script>
+</body>
+</html>
