@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <script>window.SB_API_URL = "https://script.google.com/macros/s/AKfycbyD6oTNPQPTVGbp7xKY-SnIcpMYBVQpDfIdxMi2QKZBHMHD6-ZX4wTOkO_xkfP7gy8Ghw/exec";</script>
+<base target="_top">
 <meta charset="utf-8">
 <title>AJB Leads</title>
 <style>
@@ -111,6 +112,8 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 .dhead .phones { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
 .summary { background: var(--blue-soft); border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; font-size: 13.5px }
 .thread.convo { max-height: 58vh; min-height: 120px }
+.intake { display: grid; gap: 8px; justify-items: start; background: var(--sunk); border-radius: 10px; padding: 10px 12px }
+.intake h3 { margin: 0 } .intake .chip { border: 0; cursor: pointer } .intake .msg { max-width: 100% }
 details.more { border-top: 1px solid var(--line); padding-top: 8px }
 details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-bottom: 8px }
 details.more h3 { margin-top: 12px }
@@ -183,7 +186,7 @@ details.more h3 { margin-top: 12px }
     <div class="filters">
       <select id="fAgent" aria-label="Agent"><option value="">All agents</option></select>
       <select id="fStage" aria-label="Stage"><option value="">All stages</option></select>
-      <select id="fSrc" aria-label="Source"><option value="">All sources</option><option>Calendar</option><option>Call list</option><option>WhatsApp</option><option>Quo</option><option>Applications</option><option>Zillow</option></select>
+      <select id="fSrc" aria-label="Source"><option value="">All sources</option><option>Calendar</option><option>Call list</option><option>WhatsApp</option><option>Quo</option><option>Applications</option><option>Zillow</option><option>Program email</option></select>
       <span class="muted" id="count"></span>
     </div>
 
@@ -427,6 +430,7 @@ function renderList() {
     var nx = textNext(l, S.data), a = nx ? ["red", nx.why] : actionChip(l, bucket(l, S.data)), chips = el("div", "chips");
     if (a) chips.append(el("span", "chip " + a[0], a[1]));
     if (nx) { var tb = el("span", "chip done", "✓ Texted"); tb.setAttribute("role", "button"); tb.title = "Hide until they write back"; tb.onclick = function (e) { e.stopPropagation(); markTexted(l.phone) }; chips.append(tb) }
+    if (l.ref) chips.append(el("span", "chip blue", "Referred " + l.ref.split(" · ").slice(0, 2).join(" by ")));
     if (l.zillow && /requested/i.test(l.zillow)) chips.append(el("span", "chip blue", l.zillow.split(" · ").slice(0, 2).join(" · ")));
     if (l.dnt) chips.append(el("span", "chip red", dntLabel(l.dnt)));
     if (chips.childNodes.length) c.append(chips);
@@ -468,11 +472,12 @@ function renderDetail() {
   else if (!qt.childNodes.length) qt.append(el("div", "muted", "No texts with this number on the Avi Rentals line."));
   qw.append(qt); box.append(qw);
   qt.scrollTop = qt.scrollHeight; // newest at the bottom
+  if (l.stage === "Interested" && !l.dnt) box.append(intakeBox(l, tx)); // before they apply
 
   box.append(editForm(l));
 
   var more = el("details", "more"); more.append(el("summary", null, "More: details, showings, units, team WhatsApp"));
-  var facts = [["Why", l.why], ["From", (l.src || []).join(", ")], ["Zillow", l.zillow], ["Units", l.units], ["Town", l.town], ["Income", l.income], ["Credit", l.credit],
+  var facts = [["Why", l.why], ["From", (l.src || []).join(", ")], ["Zillow", l.zillow], ["Program referral", l.ref], ["Units", l.units], ["Town", l.town], ["Income", l.income], ["Credit", l.credit],
     ["Application", l.app && (l.app + (l.appDate ? " (" + md(l.appDate) + ")" : ""))], ["Last showing", l.lastShowing], ["Next showing", l.nextShowing],
     ["Follow-up due", l.due && (md(l.due) + (l.overdue ? " (overdue)" : ""))], ["Lead card", l.cardDay && md(l.cardDay)]];
   Object.keys(l.card || {}).forEach(function (k) { if (["name", "apt", "town", "income", "credit"].indexOf(k) < 0) facts.push([k.charAt(0).toUpperCase() + k.slice(1), l.card[k]]) });
@@ -518,8 +523,9 @@ function unitList(units) {
 // ---------- Programs view: agencies and caseworkers who send voucher and program renters (owner only, read only)
 var P = { data: null, tab: "us", q: "", sel: -1 };
 var PTABS = [
-  { k: "us", label: "Waiting on us", cls: "red", test: function (c) { return c.state === "Waiting on us" } },
-  { k: "nudge", label: "Nudge due", cls: "amber", test: function (c) { return c.state !== "Waiting on us" && c.overdue } },
+  { k: "us", label: "Waiting on us", cls: "red", test: function (c) { return /Waiting on us/.test(c.state) } },
+  { k: "new", label: "New, not in the sheet", cls: "amber", test: function (c) { return !!c.isNew } },
+  { k: "nudge", label: "Nudge due", cls: "amber", test: function (c) { return !/Waiting on us/.test(c.state) && c.overdue } },
   { k: "start", label: "Start here", cls: "blue", test: function (c) { return c.state === "Start here" } },
   { k: "touch", label: "In touch", cls: "green", test: function (c) { return ["Replied", "Waiting on them", "No reply yet"].indexOf(c.state) >= 0 } },
   { k: "all", label: "All contacts", cls: "", test: function () { return true } },
@@ -571,7 +577,8 @@ function renderPList() {
   if (!rows.length) list.append(el("div", "empty", "Nobody here right now."));
   rows.forEach(function (c) {
     var b = el("button", "card" + (c.i === P.sel ? " sel" : "")); b.type = "button";
-    var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (c.state === "Waiting on us" ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
+    var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (/Waiting on us/.test(c.state) ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
+    if (c.mail && c.mail.items && c.mail.items.length) { var li = c.mail.items[c.mail.items.length - 1], lm = el("div", "last"); lm.append(el("b", null, (li.d === "o" ? "Us" : "Them") + ": "), document.createTextNode((li.s ? li.s + " · " : "") + (li.x || "").slice(0, 100)), el("span", "muted", "  " + when(li.at))); b.append(lm) }
     b.append(el("div", "sub", [c.name, c.title, c.program].filter(Boolean).join(" · ")));
     var chips = el("div", "chips");
     if (c.due) chips.append(el("span", "chip " + (c.overdue ? "red" : "amber"), (c.state === "Waiting on us" ? "Reply " : "Nudge ") + (c.overdue ? "overdue since " : "") + md(c.due)));
@@ -601,6 +608,12 @@ function renderPDetail() {
     ["How to approach", c.approach], ["Office", c.office], ["Confidence", c.confidence], ["Notes", c.notes]];
   var dl = el("dl", "facts"); facts.forEach(function (f) { if (f[1]) dl.append(el("dt", null, f[0]), el("dd", null, f[1])) });
   var fx = el("div"); fx.append(el("h3", null, "Details"), dl); box.append(fx);
+  if (c.mail && c.mail.items && c.mail.items.length) {
+    var mw = el("div"); mw.append(el("h3", null, "Emails (" + c.mail.items.length + ")"));
+    var mt = el("div", "thread");
+    c.mail.items.forEach(function (i) { var m = el("div", "msg" + (i.d === "o" ? " out" : "")); m.append(el("small", null, when(i.at) + " · " + (i.d === "o" ? "Us" : "Them")), el("b", null, i.s || "(no subject)"), document.createTextNode("\n" + (i.x || ""))); mt.append(m) });
+    mw.append(mt); box.append(mw); mt.scrollTop = mt.scrollHeight;
+  }
   var us = unitsIn(townsOf(c));
   var uw = el("div"); uw.append(el("h3", null, "Voucher units in their towns (" + us.length + ")"));
   uw.append(us.length ? unitList(us) : el("div", "muted", "None open right now.")); box.append(uw);
@@ -613,6 +626,71 @@ function loadFullThread(phone) {
   S.full[phone] = { loading: true };
   call("sbFullThread", [S.token, phone], function (json) { S.full[phone] = JSON.parse(json); if (S.sel === phone) renderDetail() },
     function (x) { S.full[phone] = { error: String(x && x.message || x) }; if (S.sel === phone) renderDetail() });
+}
+
+// ---- intake: ask every prescreen question in one text, then one follow-up with only what's missing (tests/leads.test.mjs runs this block)
+var INTAKE = [
+  { k: "move", q: "When do you want to move in?", re: /\bmove|moving|asap|a\.s\.a\.p|immediately|right away|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.? \d|\b\d{1,2}\/\d{1,2}\b|first of|\b1st\b|next month|end of (the )?month|this month/i },
+  { k: "view", q: "What days/times can you view?", re: /availab|any ?time|today|tomorrow|tmrw|tonight|\b(mon|tue|tues|wed|thu|thurs|fri|sat|sun)(day)?\b|wednesday|thursday|saturday|weekend|weekday|after \d|before \d|morning|afternoon|evening|\b\d{1,2}(:\d\d)? ?(am|pm)\b/i },
+  { k: "adults", q: "How many adults will live there (everyone 18+ applies, $35 each)?", re: /just me|only me|myself|me alone|me and|my (wife|husband|partner|fianc|boyfriend|girlfriend|son|daughter|kids?|children|mom|mother|dad|father|sister|brother|roommate)|\b\d+ (adults?|people|persons|of us|occupants)\b|\b(two|three|four|five) (of us|adults?|people)\b/i },
+  { k: "income", q: "Monthly income (all adults together)?", re: /income|\bmake\b|salary|\bearn|\bssi\b|ssdi|disability|unemploy|monthly|yearly|annual|biweekly|weekly|(per|a) (month|year|week|hour)|\/ ?(mo|month|yr|year|hr)\b|\$ ?\d|\b\d{1,3},\d{3}\b|\b\d+k\b|^\W*\d{4,6}\W*$|\b\d{4,6} ?(min|gross|net|take ?home|before|after)/im },
+  { k: "credit", q: "Credit score?", re: /credit|\bscore|fico|^\W*[3-8]\d\d\W*$/im },
+  { k: "program", q: "Section 8 or another program? If yes: voucher amount and which housing authority issued it.", re: /section ?8|\bsec ?8|\bs8\b|voucher|\bhud\b|vash|\brap\b|program|assistance|housing authority|\bcash\b/i },
+  { k: "evict", q: "Any past evictions?", re: /evict/i },
+  { k: "pets", q: "Any pets?", re: /\bpets?\b|\bdogs?\b|\bcats?\b|pupp|kitten|\bbird|\bfish\b|animals?/i },
+  { k: "mandy", q: "Have you worked with Mandy Management before?", re: /mandy|never worked|haven'?t worked|not worked|worked with (them|you)/i }
+];
+var INTAKE_NO_PROGRAM = /\bno\b.{0,15}(section ?8|sec ?8|voucher|program|assistance)|(don'?t|do not|doesn'?t|not) (have|on|with).{0,15}(section ?8|sec ?8|voucher|program|assistance)|\bcash\b/i;
+var INTAKE_AUTHORITY = /housing authority|elm city|portab|issued (by|from|in|out of)/i, INTAKE_HA = /\b[A-Z]{1,4}HA\b/; // NHHA, BHA: capitals only
+var INTAKE_VOUCHER_Q = "Voucher amount and which housing authority issued it?";
+// What's still unanswered, from their own texts plus the profile's prescreen line and the lead card.
+// Returns [{k, q}]; a voucher they mentioned without its housing authority asks only for that.
+function intakeMissing(theirTexts, known) {
+  var hay = (theirTexts || []).join("\n") + "\n" + (known || "");
+  var out = [];
+  INTAKE.forEach(function (it) {
+    if (!it.re.test(hay)) { out.push({ k: it.k, q: it.q }); return }
+    if (it.k === "program" && !INTAKE_NO_PROGRAM.test(hay) && !INTAKE_AUTHORITY.test(hay) && !INTAKE_HA.test(hay)) out.push({ k: "program", q: INTAKE_VOUCHER_Q });
+  });
+  return out;
+}
+// Five or more open: the full numbered list. Fewer: the short follow-up. None: "".
+function intakeText(missing) {
+  if (!missing.length) return "";
+  if (missing.length >= 5) return "Great! So I can set up a viewing, please answer these in one text:\n" + missing.map(function (m, i) { return (i + 1) + ". " + m.q }).join("\n");
+  return "Thanks! Just need a few more to set up your viewing:\n" + missing.map(function (m) { return "- " + m.q }).join("\n") + "\nOnce I have these I'll send you a time.";
+}
+// ---- end intake
+
+// The intake box under the conversation: chips show what's answered (tap one to flip it), the button copies the text.
+S.intake = {};
+function intakeBox(l, tx) {
+  var theirs = ((tx && tx.thread) || []).filter(function (t) { return t.d === "i" && t.k !== "c" }).map(function (t) { return t.x || "" });
+  var known = [(String(l.profile || "").match(/^Prescreen: .*$/m) || [""])[0], l.income ? "income " + l.income : "", l.credit ? "credit " + l.credit : ""].join("\n");
+  var auto = intakeMissing(theirs, known), flip = S.intake[l.phone] = S.intake[l.phone] || {};
+  var autoOpen = {}; auto.forEach(function (m) { autoOpen[m.k] = m.q });
+  var missing = INTAKE.filter(function (it) { return (it.k in autoOpen) !== !!flip[it.k] }).map(function (it) { return { k: it.k, q: autoOpen[it.k] || it.q } });
+  var box = el("div", "intake"), chips = el("div", "chips");
+  box.append(el("h3", null, "Prescreen questions"));
+  var LABEL = { move: "Move-in", view: "Viewing times", adults: "Adults", income: "Income", credit: "Credit", program: "Voucher", evict: "Evictions", pets: "Pets", mandy: "Mandy before" };
+  INTAKE.forEach(function (it) {
+    var open = missing.some(function (m) { return m.k === it.k });
+    var c = el("button", "chip " + (open ? "red" : "done"), (open ? "" : "✓ ") + LABEL[it.k]); c.type = "button";
+    c.title = open ? "Still need this. Tap if they already answered." : "Answered. Tap to ask again.";
+    c.onclick = function () { flip[it.k] = !flip[it.k]; renderDetail() };
+    chips.append(c);
+  });
+  box.append(chips);
+  var text = intakeText(missing);
+  if (!text) { box.append(el("div", "muted", "All answered. Offer one viewing time.")); return box }
+  var pre = el("div", "msg out", text), btn = el("button", "btn", missing.length >= 5 ? "Copy questions" : "Copy follow-up (" + missing.length + ")"); btn.type = "button";
+  btn.onclick = function () { copyText(text, function () { btn.textContent = "Copied ✓" }) };
+  box.append(pre, btn);
+  return box;
+}
+function copyText(text, done) {
+  var fallback = function () { var t = el("textarea"); t.value = text; document.body.append(t); t.select(); try { document.execCommand("copy") } catch (e) {} t.remove(); done() };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
 }
 
 // Same as leadManualPatch in Rules.js: what a save changes on screen until the next rebuild.
