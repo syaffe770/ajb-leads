@@ -228,8 +228,11 @@ details.more h3 { margin-top: 12px }
 </div>
 
 <script>
-var STAGES = ["Interested", "App sent", "Applied", "Approved", "Signed", "Denied", "No longer interested", "Lost"]; // same as SB_STAGES in Rules.js
+var STAGES = ["Interested", "App sent", "Applied", "Approved", "Gave deposit", "Signed", "Moved in", "Denied", "No longer interested", "Lost"]; // same as SB_STAGES in Rules.js
+var DONE_STAGES = ["Gave deposit", "Signed", "Moved in"], CHASE_STAGES = ["App sent", "Applied", "Approved"];
+var LEAD_OUT_STAGES = ["Denied", "No longer interested", "Lost"].concat(DONE_STAGES); // same as in Rules.js
 var STAGE_VAR = { "Interested": "--s-interested", "App sent": "--s-appsent", "Applied": "--s-applied", "Approved": "--s-approved", "Signed": "--s-signed",
+  "Gave deposit": "--s-signed", "Moved in": "--s-signed",
   "Denied": "--s-lost", "No longer interested": "--s-lost", "Lost": "--s-lost" };
 var S = { token: "", data: null, tab: "next", sel: "", q: "", agent: "", stage: "", full: {} };
 var store = { get: function (k) { try { return localStorage.getItem(k) } catch (e) { return null } }, set: function (k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (e) { try { localStorage.removeItem(k) } catch (x) {} } } }; // too big: drop the old copy
@@ -363,7 +366,7 @@ function bucket(l, d) {
   if (!l.focus) return "out";
   if (!l.manual.done && l.due && l.due <= d.today) return "today";
   if (l.nextShowing) return "showing";
-  if (["App sent", "Applied", "Approved"].indexOf(l.stage) >= 0) return "applying";
+  if (CHASE_STAGES.indexOf(l.stage) >= 0) return "applying";
   if (t.waiting === "them") return "waiting";
   return "other";
 }
@@ -391,6 +394,10 @@ var TABS = [
     sort: function (a, b) { var x = textNext(a, S.data), y = textNext(b, S.data); return x.rank - y.rank || (x.at < y.at ? -1 : x.at > y.at ? 1 : 0) } },
   { k: "waiting", label: "Waiting on them", cls: "", test: function (l, d) { return l.focus && l.texts && l.texts.waiting === "them" && !textNext(l, d) },
     sort: function (a, b) { return a.texts.lastOut < b.texts.lastOut ? -1 : 1 } },
+  // applied (from the Applications sheet or by hand) and not done yet: approved first, then the oldest application
+  { k: "apps", label: "Applied: chase", cls: "", test: function (l) { return l.focus && CHASE_STAGES.indexOf(l.stage) >= 0 },
+    sort: function (a, b) { var x = a.stage === "Approved" ? 0 : 1, y = b.stage === "Approved" ? 0 : 1; return x - y || ((a.appDate || "9") < (b.appDate || "9") ? -1 : 1) } },
+  { k: "done", label: "Deposit / moved in", cls: "", test: function (l) { return DONE_STAGES.indexOf(l.stage) >= 0 }, sort: function (a, b) { return (a.appDate || a.lastEvent || "") < (b.appDate || b.lastEvent || "") ? 1 : -1 } },
   { k: "all", label: "Everyone", cls: "", test: function () { return true }, sort: function (a, b) { return (a.lastEvent || "") < (b.lastEvent || "") ? 1 : -1 } },
   { k: "out", label: "Not active", cls: "", test: function (l) { return !l.focus }, sort: function (a, b) { return (a.lastEvent || "") < (b.lastEvent || "") ? 1 : -1 } }
 ];
@@ -410,7 +417,8 @@ function actionChip(l, k) {
   if (k === "today") return [l.overdue ? "red" : "amber", l.overdue ? "Overdue since " + md(l.due) : "Follow up today"];
   if (k === "showing") return ["blue", "Showing " + when(l.nextShowing.slice(0, 16)) + " · " + (l.nextShowing.split(" · ")[2] || "")];
   if (k === "waiting") return ["", "We texted " + when(t.lastOut)];
-  if (k === "applying") return ["green", l.app ? "App: " + l.app.split(" - ")[0] : l.stage];
+  if (k === "applying") return ["green", l.app ? "App: " + l.app.split(" - ")[0] + (l.appDate ? " " + md(l.appDate) : "") : l.stage];
+  if (DONE_STAGES.indexOf(l.stage) >= 0) return ["green", l.stage + (l.appDate ? " " + md(l.appDate) : "")];
   return null;
 }
 function renderList() {
@@ -699,7 +707,7 @@ function applyManual(lead, vals) {
   Object.keys(map).forEach(function (c) { if (vals.hasOwnProperty(c)) lead.manual[map[c]] = vals[c] });
   var m = lead.manual;
   if (m.stage) lead.stage = m.stage;
-  if (["Denied", "No longer interested", "Lost"].indexOf(m.stage) >= 0 && !lead.nextShowing) { lead.focus = false; lead.why = m.stage.toLowerCase() + " (set by hand)" }
+  if (LEAD_OUT_STAGES.indexOf(m.stage) >= 0 && !lead.nextShowing) { lead.focus = false; lead.why = m.stage.toLowerCase() + " (set by hand)" }
   if (m.focus === "drop") { lead.focus = false; lead.why = "dropped by hand" } else if (m.focus === "keep") lead.focus = true;
   if (m.next) { lead.due = m.next; lead.overdue = false }
   if (m.done) lead.overdue = false;
