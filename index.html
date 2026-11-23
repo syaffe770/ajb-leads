@@ -114,6 +114,14 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 .thread.convo { max-height: 58vh; min-height: 120px }
 .intake { display: grid; gap: 8px; justify-items: start; background: var(--sunk); border-radius: 10px; padding: 10px 12px }
 .intake h3 { margin: 0 } .intake .chip { border: 0; cursor: pointer } .intake .msg { max-width: 100% }
+.ans { display: grid; gap: 10px; max-width: 860px; padding-bottom: 40px }
+.ans-topics { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 }
+.ans-topics .chip { border: 0; cursor: pointer; font-size: 13px; padding: 4px 10px }
+.ans-topics .chip[aria-pressed="true"] { background: var(--muted); color: var(--surface) }
+.ans h2 { font-size: 15px; margin: 12px 0 0 }
+.acard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; justify-items: start; box-shadow: var(--shadow) }
+.acard .reply { white-space: pre-wrap; background: var(--sunk); border-radius: 8px; padding: 8px 10px; width: 100%; box-sizing: border-box }
+.acard .rule { font-size: 13px; white-space: pre-wrap }
 details.more { border-top: 1px solid var(--line); padding-top: 8px }
 details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-bottom: 8px }
 details.more h3 { margin-top: 12px }
@@ -175,6 +183,7 @@ details.more h3 { margin-top: 12px }
       <input id="q" type="search" placeholder="Search name, phone, unit or anything said">
       <button class="btn" id="refresh" type="button">Refresh</button>
       <button class="btn" id="toProg" type="button">Programs</button>
+      <button class="btn" id="toAns" type="button">Answers</button>
       <button class="btn" id="toAgent" type="button">Showings</button>
       <button class="btn" id="out" type="button">Sign out</button>
     </header>
@@ -210,6 +219,18 @@ details.more h3 { margin-top: 12px }
       <div class="list" id="pList"></div>
       <section class="detail" id="pDetail"></section>
     </div>
+  </div>
+
+  <div id="ansApp" hidden>
+    <header>
+      <h1>Answers</h1>
+      <span class="muted" id="ansCount"></span>
+      <span class="grow"></span>
+      <input id="ansQ" type="search" placeholder="Search: dog, deposit, voucher, parking…">
+      <button class="btn" id="ansToLeads" type="button">Leads</button>
+    </header>
+    <div class="ans-topics" id="ansTopics"></div>
+    <div class="ans" id="ansList"></div>
   </div>
 
   <div id="agentApp" hidden>
@@ -285,7 +306,7 @@ $("toAgent").onclick = function () { store.set("ajb.view", "agent"); loadAgent()
 $("out").onclick = function () { signOut() };
 
 /* ---- data ---- */
-function showBoard(json) { S.data = JSON.parse(json); $("signin").hidden = true; $("agentApp").hidden = true; $("progApp").hidden = true; $("app").hidden = false; fillFilters(); render() }
+function showBoard(json) { S.data = JSON.parse(json); $("signin").hidden = true; $("agentApp").hidden = true; $("progApp").hidden = true; $("ansApp").hidden = true; $("app").hidden = false; fillFilters(); render() }
 function load() {
   var cached = store.get("ajb.snap");
   if (cached && !S.data) { try { showBoard(cached); $("built").textContent += " · refreshing…" } catch (e) {} }
@@ -542,11 +563,60 @@ var PTABS = [
 function loadPrograms(fresh) {
   $("pBuilt").textContent = "Loading…";
   call("sbProgramsData", [S.token, !!fresh], function (json) {
-    P.data = JSON.parse(json); $("app").hidden = true; $("agentApp").hidden = true; $("progApp").hidden = false;
+    P.data = JSON.parse(json); $("app").hidden = true; $("agentApp").hidden = true; $("ansApp").hidden = true; $("progApp").hidden = false;
     $("pBuilt").textContent = "Updated " + md(P.data.builtAt.slice(0, 10)) + " " + t12(P.data.builtAt.slice(11)); renderP();
   });
 }
 $("toProg").onclick = function () { loadPrograms() };
+
+/* ---- Answers page (owner-only): common lead questions with a ready reply, from the board's "Answers" tab ---- */
+// ---- answers: pure, tested in tests/leads.test.mjs
+// Rows whose topic matches (when one is picked) and that contain every word of the search.
+function ansFilter(rows, q, topic) {
+  var words = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  return rows.filter(function (r) {
+    if (topic && r.topic !== topic) return false;
+    var hay = [r.topic, r.q, r.reply, r.rule].join(" ").toLowerCase();
+    return words.every(function (w) { return hay.indexOf(w) >= 0 });
+  });
+}
+// ---- end answers
+var AN = { rows: null, q: "", topic: "" };
+function showAnswers() { $("app").hidden = true; $("progApp").hidden = true; $("agentApp").hidden = true; $("ansApp").hidden = false; renderAns() }
+function loadAnswers() {
+  if (AN.rows) return showAnswers();
+  $("toAns").disabled = true;
+  call("sbAnswersData", [S.token], function (json) { $("toAns").disabled = false; AN.rows = JSON.parse(json); showAnswers() },
+    function (x) { $("toAns").disabled = false; alert(String(x && x.message || x)) });
+}
+function renderAns() {
+  var topics = []; AN.rows.forEach(function (r) { if (topics.indexOf(r.topic) < 0) topics.push(r.topic) });
+  var tb = $("ansTopics"); tb.replaceChildren();
+  [""].concat(topics).forEach(function (t) {
+    var b = el("button", "chip", t || "All"); b.type = "button"; b.setAttribute("aria-pressed", String(AN.topic === t));
+    b.onclick = function () { AN.topic = t; renderAns() }; tb.append(b);
+  });
+  var rows = ansFilter(AN.rows, AN.q, AN.topic), box = $("ansList"); box.replaceChildren();
+  $("ansCount").textContent = rows.length + " of " + AN.rows.length;
+  if (!AN.rows.length) box.append(el("div", "empty", "No answers yet. Add rows to the Answers tab of the board sheet."));
+  else if (!rows.length) box.append(el("div", "empty", "Nothing matches. Try another word."));
+  var last = "";
+  rows.forEach(function (r) {
+    if (r.topic !== last) { box.append(el("h2", null, r.topic)); last = r.topic }
+    var c = el("div", "acard"); c.append(el("b", null, r.q));
+    if (r.reply) {
+      c.append(el("div", "reply", r.reply));
+      var cp = el("button", "btn", "Copy reply"); cp.type = "button";
+      cp.onclick = function () { copyText(r.reply, function () { cp.textContent = "Copied ✓"; setTimeout(function () { cp.textContent = "Copy reply" }, 1500) }) };
+      c.append(cp);
+    }
+    if (r.rule) c.append(el("div", "rule muted", "Abe's rule: " + r.rule));
+    box.append(c);
+  });
+}
+$("toAns").onclick = loadAnswers;
+$("ansToLeads").onclick = function () { $("ansApp").hidden = true; load() };
+$("ansQ").oninput = function () { AN.q = this.value; renderAns() };
 $("pRefresh").onclick = function () { loadPrograms(true) };
 $("pToLeads").onclick = function () { $("progApp").hidden = true; load() };
 $("pq").oninput = function () { P.q = this.value.trim().toLowerCase(); renderPList() };
@@ -759,7 +829,7 @@ function setQueue(q) { store.set("ajb.queue", q.length ? JSON.stringify(q) : nul
 function loadAgent() {
   $("aBuilt").textContent = "…";
   call("sbAgentData", [S.token], function (json) {
-    A.data = JSON.parse(json); $("signin").hidden = true; $("app").hidden = true; $("progApp").hidden = true; $("agentApp").hidden = false;
+    A.data = JSON.parse(json); $("signin").hidden = true; $("app").hidden = true; $("progApp").hidden = true; $("ansApp").hidden = true; $("agentApp").hidden = false;
     $("toLeads").hidden = A.data.role !== "owner";
     if (A.who === null) A.who = A.data.myAgent || "";
     queue().forEach(function (t) { var s = findShow(t.id); if (s) { s.outcome = t.outcome; s.pending = true; if (t.note != null) s.note = t.note } }); // taps not sent yet stay on screen
