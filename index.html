@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <script>window.SB_API_URL = "https://script.google.com/macros/s/AKfycbyD6oTNPQPTVGbp7xKY-SnIcpMYBVQpDfIdxMi2QKZBHMHD6-ZX4wTOkO_xkfP7gy8Ghw/exec";</script>
+<base target="_top">
 <meta charset="utf-8">
 <title>AJB Leads</title>
 <style>
@@ -105,6 +106,12 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 .msg.call { align-self: center; background: var(--amber-soft); color: var(--amber); font-size: 12.5px }
 .back { display: none }
 .chip.done { background: var(--accent-soft); color: var(--accent); cursor: pointer }
+.pcats { padding: 2px 0 6px } .pcats .chip { cursor: pointer; border: 1px solid var(--line) } .pcats .chip[aria-pressed="true"] { background: var(--fg); color: var(--surface) }
+.pcat { background: var(--sunk); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-top: 8px }
+.pcat summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px; align-items: center } .pcat summary b { font-size: 15px }
+.pcat .pfacts { display: grid; gap: 2px; font-size: 13px; margin: 6px 0 0 } .pcat h3 { margin: 8px 0 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.pcat .reply { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px } .detail > .pcat { margin: 10px 0 }
+.pcat ol, .pcat ul { margin: 0; padding-left: 20px; font-size: 13px } .pcat.ends { border-left: 4px solid #d97706 }
 .pact { display: grid; gap: 8px; background: var(--sunk); border-radius: 10px; padding: 10px }
 .pact textarea, .pact input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 14px }
 .card .last { font-size: 13px; color: var(--fg); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
@@ -487,6 +494,7 @@ function renderDetail() {
   head.append(ph);
   if (l.profile) head.append(el("div", "summary", l.profile.replace(/\n\(\d+ related team messages used\)$/, "")));
   box.append(back, head);
+  var pb = l.prog && leadProgBox(l); if (pb) box.append(pb);
 
   var full = S.full[l.phone], tx = full && full.thread ? full : l.texts;
   if (!full) loadFullThread(l.phone);
@@ -655,8 +663,25 @@ function renderPList() {
   var rows = P.data.contacts.map(function (c, i) { c.i = i; return c }).filter(tab.test).filter(function (c) {
     return !P.q || [c.org, c.name, c.title, c.email, c.phone, c.program, c.region, c.towns, c.said, c.nextStep, c.notes, c.response, c.follow, c.quo && c.quo.said, c.check && c.check.note].join(" ").toLowerCase().indexOf(P.q) >= 0;
   }).sort(function (a, b) { return (a.overdue === b.overdue ? 0 : a.overdue ? -1 : 1) || (String(a.due || "9") < String(b.due || "9") ? -1 : String(a.due || "9") > String(b.due || "9") ? 1 : 0) || (+a.rank || 9) - (+b.rank || 9) });
+  // categories: a chip row to narrow to one, then one section per category with its how-to
+  var cats = (P.data.cats || []).map(function (k) { return k.name }), count = {};
+  rows.forEach(function (c) { var k = cats.indexOf(c.cat) >= 0 ? c.cat : "Not sure yet"; c.cat = k; count[k] = (count[k] || 0) + 1 });
+  if (P.cat && !count[P.cat]) P.cat = "";
+  if (cats.length && rows.length) {
+    var bar = el("div", "chips pcats"), mk = function (k, label) {
+      var b = el("button", "chip", label); b.type = "button"; b.setAttribute("aria-pressed", String(P.cat === k));
+      b.onclick = function () { P.cat = k; renderPList() }; bar.append(b);
+    };
+    mk("", "All " + rows.length);
+    cats.forEach(function (k) { if (count[k]) mk(k, k + " " + count[k]) });
+    list.append(bar);
+  }
+  if (P.cat) rows = rows.filter(function (c) { return c.cat === P.cat });
   if (!rows.length) list.append(el("div", "empty", "Nobody here right now."));
+  var lastCat = null;
+  rows.sort(function (a, b) { return cats.indexOf(a.cat) - cats.indexOf(b.cat) }); // stable: keeps the due-date order inside each category
   rows.forEach(function (c) {
+    if (cats.length && c.cat !== lastCat) { lastCat = c.cat; list.append(pCatHead((P.data.cats || []).filter(function (k) { return k.name === c.cat })[0], count[c.cat])) }
     var b = el("button", "card" + (c.i === P.sel ? " sel" : "")); b.type = "button";
     var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (/waiting on us/i.test(c.state) ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
     var li = pLast(c); if (li) { var lm = el("div", "last"); lm.append(el("b", null, li.ch + " " + li.who + ": "), document.createTextNode(li.text.slice(0, 110)), el("span", "muted", "  " + when(li.at))); b.append(lm) }
@@ -673,6 +698,46 @@ function renderPList() {
     b.onclick = function () { P.sel = c.i; $("pMain").classList.add("open"); renderPList(); renderPDetail() };
     list.append(b);
   });
+}
+// A category's header: name, count, rent / deposit / inspection, and (opened) the steps and what to watch for.
+function pCatHead(k, n) {
+  var d = el("details", "pcat" + (k.ends ? " ends" : "")), s = el("summary");
+  s.append(el("b", null, k.name), el("span", "chip", n + (n === 1 ? " contact" : " contacts")));
+  if (k.ends) s.append(el("span", "chip amber", "Help ends: screen like no voucher"));
+  d.append(s);
+  var facts = el("div", "pfacts");
+  [["Rent help", k.rent], ["Deposit", k.deposit], ["Inspection", k.inspect]].forEach(function (x) { if (x[1]) { var p = el("div"); p.append(el("b", null, x[0] + ": "), document.createTextNode(x[1])); facts.append(p) } });
+  d.append(facts);
+  if (k.steps && k.steps.length) { d.append(el("h3", null, "Steps")); var ol = el("ol"); k.steps.forEach(function (t) { ol.append(el("li", null, t)) }); d.append(ol) }
+  if (k.watch && k.watch.length) { d.append(el("h3", null, "Watch for")); var ul = el("ul"); k.watch.forEach(function (t) { ul.append(el("li", null, t)) }); d.append(ul) }
+  if (k.client) clientTell(d, k.client, "", "");
+  return d;
+}
+// "Talking to the client directly": what to tell them, and a text to copy with their first name and unit filled in.
+function clientTell(box, cl, name, unit) {
+  box.append(el("h3", null, "Talking to the client directly"));
+  var ul = el("ul"); cl.tell.forEach(function (t) { ul.append(el("li", null, t)) }); box.append(ul);
+  var first = String(name || "").trim().split(/\s+/)[0], msg = cl.text.replace("[Name]", first || "[Name]").replace("[unit]", unit || "[unit]");
+  box.append(el("div", "reply", msg));
+  var cp = el("button", "btn", "Copy text"); cp.type = "button";
+  cp.onclick = function (e) { e.preventDefault(); copyText(msg, function () { cp.textContent = "Copied ✓"; setTimeout(function () { cp.textContent = "Copy text" }, 1500) }) };
+  box.append(cp);
+}
+// On a lead's card: the program they mentioned, with what to tell them.
+function leadProgBox(l) {
+  var k = (S.data.cats || []).filter(function (c) { return c.name === l.prog })[0];
+  if (!k || !k.client) return null;
+  var d = el("details", "pcat" + (k.ends ? " ends" : "")), s = el("summary");
+  d.open = !!(S.progOpen && S.progOpen[l.phone]); // stays open when the card redraws (e.g. the Quo thread loads)
+  d.ontoggle = function () { (S.progOpen = S.progOpen || {})[l.phone] = d.open };
+  s.append(el("b", null, k.name + ": what to tell them"));
+  if (k.ends) s.append(el("span", "chip amber", "Help ends: screen like no voucher"));
+  d.append(s);
+  var facts = el("div", "pfacts");
+  [["Rent help", k.rent], ["Deposit", k.deposit], ["Inspection", k.inspect]].forEach(function (x) { if (x[1]) { var p = el("div"); p.append(el("b", null, x[0] + ": "), document.createTextNode(x[1])); facts.append(p) } });
+  d.append(facts);
+  clientTell(d, k.client, l.name, String(l.units || "").split(/[;,]/)[0].trim());
+  return d;
 }
 function renderPDetail() {
   var box = $("pDetail"), c = P.data.contacts[P.sel]; box.replaceChildren();
