@@ -4,7 +4,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <script>window.SB_API_URL = "https://script.google.com/macros/s/AKfycbyD6oTNPQPTVGbp7xKY-SnIcpMYBVQpDfIdxMi2QKZBHMHD6-ZX4wTOkO_xkfP7gy8Ghw/exec";</script>
-<base target="_top">
 <meta charset="utf-8">
 <title>AJB Leads</title>
 <style>
@@ -106,6 +105,8 @@ header h1 { margin: 0; font-size: 20px; letter-spacing: -.01em }
 .msg.call { align-self: center; background: var(--amber-soft); color: var(--amber); font-size: 12.5px }
 .back { display: none }
 .chip.done { background: var(--accent-soft); color: var(--accent); cursor: pointer }
+.pact { display: grid; gap: 8px; background: var(--sunk); border-radius: 10px; padding: 10px }
+.pact textarea, .pact input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 14px }
 .card .last { font-size: 13px; color: var(--fg); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical }
 .card .last b { color: var(--muted); font-weight: 600 }
 .dhead { display: grid; gap: 6px }
@@ -550,13 +551,15 @@ function unitList(units) {
 }
 
 // ---------- Programs view: agencies and caseworkers who send voucher and program renters (owner only, read only)
-var P = { data: null, tab: "us", q: "", sel: -1 };
+var P = { data: null, tab: "us", q: "", sel: -1, full: {}, drafts: {} };
 var PTABS = [
-  { k: "us", label: "Waiting on us", cls: "red", test: function (c) { return /Waiting on us/.test(c.state) } },
+  { k: "us", label: "Waiting on us", cls: "red", test: function (c) { return /waiting on us/i.test(c.state) } },
   { k: "new", label: "New, not in the sheet", cls: "amber", test: function (c) { return !!c.isNew } },
-  { k: "nudge", label: "Nudge due", cls: "amber", test: function (c) { return !/Waiting on us/.test(c.state) && c.overdue } },
+  { k: "quo", label: "Called us on Quo", cls: "amber", test: function (c) { return !!c.quo } },
+  { k: "nudge", label: "Nudge due", cls: "amber", test: function (c) { return !/waiting on us/i.test(c.state) && c.overdue } },
   { k: "start", label: "Start here", cls: "blue", test: function (c) { return c.state === "Start here" } },
   { k: "touch", label: "In touch", cls: "green", test: function (c) { return ["Replied", "Waiting on them", "No reply yet"].indexOf(c.state) >= 0 } },
+  { k: "done", label: "Handled / snoozed", cls: "green", test: function (c) { return !!(c.check && (c.check.doneAt || c.check.snooze > P.data.today)) } },
   { k: "all", label: "All contacts", cls: "", test: function () { return true } },
   { k: "units", label: "Voucher units", cls: "", units: true }
 ];
@@ -650,16 +653,19 @@ function renderPList() {
     return;
   }
   var rows = P.data.contacts.map(function (c, i) { c.i = i; return c }).filter(tab.test).filter(function (c) {
-    return !P.q || [c.org, c.name, c.title, c.email, c.program, c.region, c.towns, c.said, c.nextStep, c.notes, c.response, c.follow].join(" ").toLowerCase().indexOf(P.q) >= 0;
+    return !P.q || [c.org, c.name, c.title, c.email, c.phone, c.program, c.region, c.towns, c.said, c.nextStep, c.notes, c.response, c.follow, c.quo && c.quo.said, c.check && c.check.note].join(" ").toLowerCase().indexOf(P.q) >= 0;
   }).sort(function (a, b) { return (a.overdue === b.overdue ? 0 : a.overdue ? -1 : 1) || (String(a.due || "9") < String(b.due || "9") ? -1 : String(a.due || "9") > String(b.due || "9") ? 1 : 0) || (+a.rank || 9) - (+b.rank || 9) });
   if (!rows.length) list.append(el("div", "empty", "Nobody here right now."));
   rows.forEach(function (c) {
     var b = el("button", "card" + (c.i === P.sel ? " sel" : "")); b.type = "button";
-    var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (/Waiting on us/.test(c.state) ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
-    if (c.mail && c.mail.items && c.mail.items.length) { var li = c.mail.items[c.mail.items.length - 1], lm = el("div", "last"); lm.append(el("b", null, (li.d === "o" ? "Us" : "Them") + ": "), document.createTextNode((li.s ? li.s + " · " : "") + (li.x || "").slice(0, 100)), el("span", "muted", "  " + when(li.at))); b.append(lm) }
+    var top = el("div", "top"); top.append(el("span", "nm", c.org || c.name), el("span", "chip " + (/waiting on us/i.test(c.state) ? "red" : c.overdue ? "amber" : ""), c.state)); b.append(top);
+    var li = pLast(c); if (li) { var lm = el("div", "last"); lm.append(el("b", null, li.ch + " " + li.who + ": "), document.createTextNode(li.text.slice(0, 110)), el("span", "muted", "  " + when(li.at))); b.append(lm) }
     b.append(el("div", "sub", [c.name, c.title, c.program].filter(Boolean).join(" · ")));
     var chips = el("div", "chips");
-    if (c.due) chips.append(el("span", "chip " + (c.overdue ? "red" : "amber"), (c.state === "Waiting on us" ? "Reply " : "Nudge ") + (c.overdue ? "overdue since " : "") + md(c.due)));
+    if (c.due) chips.append(el("span", "chip " + (c.overdue ? "red" : "amber"), (/waiting on us/i.test(c.state) ? "Reply " : "Nudge ") + (c.overdue ? "overdue since " : "") + md(c.due)));
+    if (c.check && c.check.doneAt) chips.append(el("span", "chip done", "✓ Handled " + md(c.check.doneAt.slice(0, 10))));
+    if (c.quo) chips.append(el("span", "chip", "Quo: " + [c.quo.calls && c.quo.calls + (c.quo.calls === 1 ? " call" : " calls"), c.quo.texts && c.quo.texts + (c.quo.texts === 1 ? " text" : " texts")].filter(Boolean).join(", ")));
+    if (c.mail && c.mail.items && c.mail.items.length) chips.append(el("span", "chip", c.mail.items.length + (c.mail.items.length === 1 ? " email" : " emails")));
     if (c.voucherUnits) chips.append(el("span", "chip blue", c.voucherUnits + " voucher units in their towns"));
     if (c.towns) chips.append(el("span", "chip unit", c.towns));
     b.append(chips);
@@ -675,11 +681,12 @@ function renderPDetail() {
   var back = el("button", "btn back", "← Back"); back.type = "button"; back.onclick = function () { $("pMain").classList.remove("open") };
   var head = el("div"); head.append(el("h2", null, c.org || c.name));
   var ph = el("div", "phones");
-  if (c.phone) { var tel = el("a", null, c.phone); tel.href = "tel:" + String(c.phone).replace(/x.*$/i, "").replace(/[^\d+]/g, ""); ph.append(tel) }
+  if (c.phone) { var tel = el("a", null, /^\+1\d{10}$/.test(c.phone) ? pretty(c.phone) : c.phone); tel.href = "tel:" + String(c.phone).replace(/x.*$/i, "").replace(/[^\d+]/g, ""); ph.append(tel) }
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || "")) { var em = el("a", null, c.email); em.href = "mailto:" + c.email; ph.append(em) }
   head.append(el("div", "muted", [c.name, c.title].filter(Boolean).join(" · ")), ph);
-  box.append(back, head);
-  var facts = [["Status", c.state + (c.due ? " · " + (c.state === "Waiting on us" ? "reply " : "nudge ") + md(c.due) + (c.overdue ? " (overdue)" : "") : "")],
+  box.append(back, head, pActions(c));
+  var facts = [["Status", c.state + (c.due ? " · " + (/waiting on us/i.test(c.state) ? "reply " : "nudge ") + md(c.due) + (c.overdue ? " (overdue)" : "") : "")],
+    ["Last from them", c.lastIn && when(c.lastIn)], ["Last from us", c.lastOut && when(c.lastOut)],
     ["Program", [c.program, c.tier, c.rank && "rank " + c.rank].filter(Boolean).join(" · ")], ["Region", c.region], ["Towns served", c.towns],
     ["Emailed", c.emailedOn && md(c.emailedOn)], ["First contact", c.first && md(c.first)], ["Replied", [c.replied, c.replyOn && md(c.replyOn)].filter(Boolean).join(" · ")],
     ["What they said", c.said || c.response], ["Waiting on", c.waitingOn], ["Next step", c.nextStep], ["Follow-up notes", c.follow],
@@ -692,11 +699,95 @@ function renderPDetail() {
     c.mail.items.forEach(function (i) { var m = el("div", "msg" + (i.d === "o" ? " out" : "")); m.append(el("small", null, when(i.at) + " · " + (i.d === "o" ? "Us" : "Them")), el("b", null, i.s || "(no subject)"), document.createTextNode("\n" + (i.x || ""))); mt.append(m) });
     mw.append(mt); box.append(mw); mt.scrollTop = mt.scrollHeight;
   }
+  var qph = (c.phones || [])[0];
+  if (c.quo || qph) box.append(pQuoBox(c, qph));
   var us = unitsIn(townsOf(c));
   var uw = el("div"); uw.append(el("h3", null, "Voucher units in their towns (" + us.length + ")"));
   uw.append(us.length ? unitList(us) : el("div", "muted", "None open right now.")); box.append(uw);
-  box.append(el("div", "muted", "Edit contacts in the Program-Contacts-Master sheet; this page only reads it."));
+  box.append(el("div", "muted", "Edit contacts in the Program-Contacts-Master sheet; this page only reads it. Check-offs and notes are kept in the board's Program Checks tab."));
   box.scrollTop = 0;
+}
+
+// ---- Program Watch: newest message on any channel, check-offs, drafts, Quo
+function pLast(c) {
+  var best = null, mi = c.mail && c.mail.items && c.mail.items[c.mail.items.length - 1];
+  if (mi) best = { ch: "✉", who: mi.d === "o" ? "Us" : "Them", text: (mi.s ? mi.s + " · " : "") + (mi.x || ""), at: mi.at };
+  if (c.quo && c.quo.said && (!best || c.quo.last > best.at)) best = { ch: c.quo.source === "text" ? "💬" : "📞", who: "Them", text: c.quo.said, at: c.quo.last };
+  return best;
+}
+function pActions(c) {
+  var box = el("div", "pact"), row = el("div", "chips"), ck = c.check || {}, today = P.data.today;
+  var save = function (f, patch, btn) {
+    if (btn) btn.disabled = true;
+    call("sbSaveProgram", [S.token, c.key, f], function (json) { c.check = JSON.parse(json); patch(); renderP() }, function (x) { if (btn) btn.disabled = false; alert(String(x && x.message || x)) });
+  };
+  var b = function (label, cls, fn) { var x = el("button", "btn" + (cls ? " " + cls : ""), label); x.type = "button"; x.onclick = function () { fn(x) }; row.append(x); return x };
+  if (ck.doneAt) b("Undo handled", "", function (x) { save({ done: false }, function () { c.state = "Refresh to update" }, x) });
+  else b("✓ Handled", "primary", function (x) { save({ done: true, snooze: "" }, function () { c.state = c.lastIn ? "Waiting on them" : "No reply yet"; c.due = dayAdd(today, 7); c.overdue = false }, x) });
+  if (ck.snooze > today) b("Unsnooze", "", function (x) { save({ snooze: "" }, function () { c.state = "Refresh to update" }, x) });
+  else [[3, "Snooze 3 days"], [7, "Snooze 1 week"]].forEach(function (s) { b(s[1], "", function (x) { var d = dayAdd(today, s[0]); save({ snooze: d }, function () { c.state = "Snoozed"; c.due = d; c.overdue = false }, x) }) });
+  var dr = el("div", "pact");
+  if (/@/.test(c.email || "")) b("Draft email", "", function () { pDraft(c, "email", dr) });
+  if ((c.phones || []).length) b("Draft text", "", function () { pDraft(c, "text", dr) });
+  box.append(row);
+  if (ck.doneAt) box.append(el("div", "muted", "Handled " + when(ck.doneAt) + (ck.by ? " by " + ck.by : "") + ". A nudge comes due a week later unless they write first."));
+  if (ck.snooze > today) box.append(el("div", "muted", "Snoozed until " + md(ck.snooze) + "."));
+  var note = el("textarea"); note.rows = 2; note.placeholder = "Note: who you spoke to, what's next…"; note.value = ck.note || "";
+  var ns = el("button", "btn", "Save note"); ns.type = "button";
+  ns.onclick = function () { save({ note: note.value }, function () {}, ns) };
+  box.append(note, ns, dr);
+  if (P.drafts[c.key]) pDraftView(c, dr); else dr.hidden = true;
+  return box;
+}
+function pDraft(c, kind, box) {
+  box.hidden = false;
+  box.replaceChildren(el("div", "muted", "Writing a draft " + (kind === "text" ? "text" : "email") + "…"));
+  call("sbProgramDraft", [S.token, c.key, kind], function (json) { var d = JSON.parse(json); d.kind = kind; P.drafts[c.key] = d; pDraftView(c, box) },
+    function (x) { box.replaceChildren(el("div", "muted", "No draft: " + String(x && x.message || x))) });
+}
+// The draft stays (and keeps your edits) until you close it, even when the page redraws.
+function pDraftView(c, box) {
+  var d = P.drafts[c.key], kind = d.kind, subj = null; box.hidden = false; box.replaceChildren();
+    if (kind === "email") { subj = el("input"); subj.value = d.subject; subj.oninput = function () { d.subject = subj.value }; box.append(subj) }
+    var ta = el("textarea"); ta.rows = kind === "email" ? 9 : 4; ta.value = d.body; ta.oninput = function () { d.body = ta.value }; box.append(ta);
+    var bar = el("div", "chips"), cp = el("button", "btn", "Copy"); cp.type = "button";
+    cp.onclick = function () { copyText(ta.value, function () { cp.textContent = "Copied ✓"; setTimeout(function () { cp.textContent = "Copy" }, 1500) }) };
+    bar.append(cp);
+    if (kind === "email") {
+      var mo = el("button", "btn primary", "Open in email"); mo.type = "button";
+      mo.onclick = function () { location.href = "mailto:" + c.email + "?subject=" + encodeURIComponent(subj.value) + "&body=" + encodeURIComponent(ta.value) };
+      bar.append(mo);
+    } else bar.append(el("span", "muted", "Paste it into Quo."));
+    var cl = el("button", "btn", "Close"); cl.type = "button"; cl.onclick = function () { delete P.drafts[c.key]; box.hidden = true; box.replaceChildren() }; bar.append(cl);
+    box.append(bar, el("div", "muted", "Only a draft: nothing is sent until you send it yourself. Check it first."));
+}
+function pQuoBox(c, ph) {
+  var w = el("div"); w.append(el("h3", null, "Quo calls and texts"));
+  if (c.quo) {
+    w.append(el("div", "why", (c.quo.role === "caseworker" ? "Caseworker" : "Mentioned a program") + (c.quo.programs.length ? " · " + c.quo.programs.join(", ") : "") +
+      " · " + c.quo.calls + " calls, " + c.quo.texts + " texts · last " + when(c.quo.last) + " (" + c.quo.source + ")"));
+    var said = el("div", "msg"); said.append(el("small", null, "What they said"), document.createTextNode(c.quo.said)); w.append(said);
+  }
+  if (!ph) return w;
+  var full = P.full[ph];
+  if (!full) {
+    var lb = el("button", "btn", "Show the whole Quo conversation"); lb.type = "button";
+    lb.onclick = function () {
+      P.full[ph] = { loading: true }; renderPDetail();
+      call("sbFullThread", [S.token, ph], function (json) { P.full[ph] = JSON.parse(json); renderPDetail() }, function (x) { P.full[ph] = { error: String(x && x.message || x) }; renderPDetail() });
+    };
+    w.append(lb); return w;
+  }
+  var qt = el("div", "thread convo");
+  (full.thread || []).forEach(function (t) {
+    var m = el("div", "msg" + (t.d === "o" ? " out" : "") + (t.k === "c" ? " call" : ""));
+    m.append(el("small", null, when(t.at)), document.createTextNode(t.x || (t.m ? "Photo or file" : ""))); qt.append(m);
+  });
+  if (full.loading) qt.append(el("div", "muted", "Loading the conversation from Quo…"));
+  else if (full.error) qt.append(el("div", "muted", "Couldn't load the conversation: " + full.error));
+  else if (!qt.childNodes.length) qt.append(el("div", "muted", "No texts or calls with this number on the Avi Rentals line."));
+  w.append(qt); setTimeout(function () { qt.scrollTop = qt.scrollHeight }, 0);
+  return w;
 }
 
 // The whole Quo conversation for one person, fetched once per page load when their card opens.
