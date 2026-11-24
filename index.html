@@ -162,6 +162,7 @@ details.more h3 { margin-top: 12px }
 .logged { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-weight: 650 }
 .logged .ok { color: var(--accent) } .logged .wait { color: var(--amber) }
 .linkbtn { border: 0; background: none; color: var(--accent); font-weight: 600; padding: 2px 0 }
+.phones .phonecopy { margin-right: 12px; font-size: inherit; cursor: copy }
 .notebox { display: grid; gap: 6px } .notebox textarea { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 14px }
 @media (max-width: 880px) {
   .main { grid-template-columns: 1fr }
@@ -191,6 +192,7 @@ details.more h3 { margin-top: 12px }
       <input id="q" type="search" placeholder="Search name, phone, unit or anything said">
       <button class="btn" id="refresh" type="button">Refresh</button>
       <button class="btn" id="toProg" type="button">Programs</button>
+      <button class="btn" id="toGuides" type="button">Program how-to</button>
       <button class="btn" id="toAns" type="button">Answers</button>
       <button class="btn" id="toAgent" type="button">Showings</button>
       <button class="btn" id="out" type="button">Sign out</button>
@@ -484,7 +486,7 @@ function renderDetail() {
   var back = el("button", "btn back", "← Back"); back.type = "button"; back.onclick = function () { $("main").classList.remove("open") };
   var head = el("div", "dhead"); head.append(el("h2", null, l.name || pretty(l.phone)));
   var ph = el("div", "phones");
-  var tel = el("a", null, pretty(l.phone)); tel.href = "tel:" + l.phone;
+  var tel = phoneCopy(pretty(l.phone), pretty(l.phone));
   var quo = el("a", null, "Open in Quo"); quo.href = "openphone://dial?number=" + encodeURIComponent(l.phone);
   ph.append(tel, quo);
   var st = el("span", "chip stage", l.stage); st.style.setProperty("--stage", "var(" + (STAGE_VAR[l.stage] || "--s-lost") + ")"); ph.append(st);
@@ -569,7 +571,8 @@ var PTABS = [
   { k: "touch", label: "In touch", cls: "green", test: function (c) { return ["Replied", "Waiting on them", "No reply yet"].indexOf(c.state) >= 0 } },
   { k: "done", label: "Handled / snoozed", cls: "green", test: function (c) { return !!(c.check && (c.check.doneAt || c.check.snooze > P.data.today)) } },
   { k: "all", label: "All contacts", cls: "", test: function () { return true } },
-  { k: "units", label: "Voucher units", cls: "", units: true }
+  { k: "units", label: "Voucher units", cls: "", units: true },
+  { k: "guides", label: "How to: each program", cls: "blue", guides: true }
 ];
 function loadPrograms(fresh) {
   $("pBuilt").textContent = "Loading…";
@@ -579,6 +582,7 @@ function loadPrograms(fresh) {
   });
 }
 $("toProg").onclick = function () { loadPrograms() };
+$("toGuides").onclick = function () { P.tab = "guides"; P.sel = -1; loadPrograms() };
 
 /* ---- Answers page (owner-only): common lead questions with a ready reply, from the board's "Answers" tab ---- */
 // ---- answers: pure, tested in tests/leads.test.mjs
@@ -636,7 +640,7 @@ function unitsIn(towns) { return P.data.units.filter(function (u) { return towns
 function renderP() {
   var box = $("pTiles"); box.replaceChildren();
   PTABS.forEach(function (t) {
-    var n = t.units ? P.data.units.length : P.data.contacts.filter(t.test).length;
+    var n = t.units ? P.data.units.length : t.guides ? (P.data.cats || []).length : P.data.contacts.filter(t.test).length;
     var b = el("button", "tile " + t.cls); b.type = "button"; b.setAttribute("aria-pressed", String(P.tab === t.k));
     b.append(el("b", null, String(n)), el("span", null, t.label));
     b.onclick = function () { P.tab = t.k; P.sel = -1; renderP() };
@@ -646,6 +650,14 @@ function renderP() {
 }
 function renderPList() {
   var list = $("pList"), tab = PTABS.filter(function (t) { return t.k === P.tab })[0]; list.replaceChildren();
+  if (tab.guides) { // every program's full how-to, open, with what to tell the client
+    var q = P.q;
+    (P.data.cats || []).filter(function (k) { return !q || JSON.stringify(k).toLowerCase().indexOf(q) >= 0 }).forEach(function (k) {
+      var n = P.data.contacts.filter(function (c) { return c.cat === k.name }).length, h = pCatHead(k, n); h.open = true; list.append(h);
+    });
+    if (!list.childNodes.length) list.append(el("div", "empty", P.data.cats ? "Nothing matches." : "Press Refresh to load the program guides."));
+    return;
+  }
   if (tab.units) {
     var by = {};
     P.data.units.filter(function (u) { return !P.q || [u.address, u.city, u.beds, u.rent].join(" ").toLowerCase().indexOf(P.q) >= 0 })
@@ -741,12 +753,13 @@ function leadProgBox(l) {
 }
 function renderPDetail() {
   var box = $("pDetail"), c = P.data.contacts[P.sel]; box.replaceChildren();
+  if (P.tab === "guides") { box.append(el("div", "empty", "Every program type with what to do, what to watch for, and what to tell the client when you text them directly. Copy a text and paste it into Quo. The full playbook with Abe's cases is in the AJB Answers Bot folder (programs.md).")); return }
   if (P.tab === "units") { box.append(el("div", "empty", "Voucher-OK units from " + (P.data.vacancyFile || "the vacancy list") + ": not tagged \"No Section 8\", with beds and rent, and not a private-listing unit. Door codes are never copied here.")); return }
   if (!c) { box.append(el("div", "empty", "Pick a contact to see everything about them.")); return }
   var back = el("button", "btn back", "← Back"); back.type = "button"; back.onclick = function () { $("pMain").classList.remove("open") };
   var head = el("div"); head.append(el("h2", null, c.org || c.name));
   var ph = el("div", "phones");
-  if (c.phone) { var tel = el("a", null, /^\+1\d{10}$/.test(c.phone) ? pretty(c.phone) : c.phone); tel.href = "tel:" + String(c.phone).replace(/x.*$/i, "").replace(/[^\d+]/g, ""); ph.append(tel) }
+  if (c.phone) { var shownPh = /^\+1\d{10}$/.test(c.phone) ? pretty(c.phone) : c.phone; ph.append(phoneCopy(shownPh, shownPh)) }
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || "")) { var em = el("a", null, c.email); em.href = "mailto:" + c.email; ph.append(em) }
   head.append(el("div", "muted", [c.name, c.title].filter(Boolean).join(" · ")), ph);
   box.append(back, head, pActions(c));
@@ -921,6 +934,12 @@ function intakeBox(l, tx) {
   btn.onclick = function () { copyText(text, function () { btn.textContent = "Copied ✓" }) };
   box.append(pre, btn);
   return box;
+}
+// A phone number that copies itself when clicked (for pasting into Quo), instead of trying to call.
+function phoneCopy(shown, number) {
+  var b = el("button", "linkbtn phonecopy", shown); b.type = "button"; b.title = "Click to copy";
+  b.onclick = function () { copyText(number, function () { b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = shown }, 1200) }) };
+  return b;
 }
 function copyText(text, done) {
   var fallback = function () { var t = el("textarea"); t.value = text; document.body.append(t); t.select(); try { document.execCommand("copy") } catch (e) {} t.remove(); done() };
